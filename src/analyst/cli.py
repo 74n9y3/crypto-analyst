@@ -757,6 +757,41 @@ def strategies_list():
     )
 
 
+def _print_robustness(bundle: dict) -> None:
+    wf = bundle["walk_forward"]
+    color = {"PASS": "green", "WARN": "yellow", "FAIL": "red"}.get(wf["verdict"], "yellow")
+    console.print(
+        f"[bold]滚动样本外[/bold]（每窗 {wf['oos_days']} 天，步长 {wf['step_days']} 天）："
+        f"通过 {wf['n_pass']}/{wf['n_windows']}，最长连续 {wf['max_consecutive']}"
+        f"（门槛 {wf['consecutive_required']}）"
+        f" [{color}]{wf['verdict']}[/{color}]"
+    )
+    bits = []
+    for row in bundle["cost_sensitivity"]:
+        bits.append(f"{row['scale']:g}× {row['total_return_pct']:+.1f}%")
+    doubled = "仍为正" if bundle["cost_2x_still_positive"] else "转负或持平"
+    console.print(f"[bold]成本敏感度[/bold]：{' · '.join(bits)}（2× {doubled}）")
+    dsr = bundle["deflated_sharpe"]
+    if dsr.get("dsr_prob") is None:
+        console.print(f"[bold]Deflated Sharpe[/bold]：{dsr['verdict']}")
+    else:
+        dsr_color = "green" if dsr["verdict"] == "PASS" else "red"
+        console.print(
+            f"[bold]Deflated Sharpe[/bold]：概率 {dsr['dsr_prob']:.2f}"
+            f"（候选 {dsr['n_trials']}） [{dsr_color}]{dsr['verdict']}[/{dsr_color}]"
+        )
+    pbo = bundle["pbo"]
+    if pbo.get("pbo") is None:
+        console.print(f"[bold]PBO[/bold]：{pbo.get('reason') or pbo.get('verdict')}")
+    else:
+        pbo_color = {"PASS": "green", "WARN": "yellow"}.get(pbo["verdict"], "red")
+        console.print(
+            f"[bold]PBO[/bold]：{pbo['pbo']:.2f}"
+            f"（{pbo['n_strategies']} 个参数邻域，{pbo['n_splits']} 折）"
+            f" [{pbo_color}]{pbo['verdict']}[/{pbo_color}]"
+        )
+
+
 @app.command("backtest-classic")
 def backtest_classic(
     symbol: str = typer.Argument("BTC", help="币种，如 BTC / ETH / SOL"),
@@ -771,7 +806,12 @@ def backtest_classic(
         help="只做多（5 年回测显示做空腿在加密市场拖累收益）",
     ),
     fee_pct: float = typer.Option(0.05, "--fee", help="单边手续费 %"),
-    slippage_pct: float = typer.Option(0.02, "--slippage", help="单边滑点 %"),
+    slippage_pct: float = typer.Option(0.02, "--slippage", help="单边基础滑点 %"),
+    spread_pct: float = typer.Option(0.01, "--spread", help="买卖价差全宽 %，每边收一半"),
+    vol_slip: float = typer.Option(
+        0.1, "--vol-slip",
+        help="波动滑点：换手时额外收取该比例 × ATR/价格；0=关",
+    ),
     oos_days: int = typer.Option(365, "--oos-days", help="样本外天数（0=不分割）"),
     include_funding: bool = typer.Option(
         True, "--funding/--no-funding",
@@ -804,13 +844,31 @@ def backtest_classic(
         raise typer.Exit(1)
 
     sym = _normalize_symbol(symbol)
-    cost = CostModel(fee_pct=fee_pct, slippage_pct=slippage_pct)
+    cost = CostModel(
+        fee_pct=fee_pct,
+        slippage_pct=slippage_pct,
+        spread_pct=spread_pct,
+        vol_slip_atr_frac=vol_slip,
+    )
     with console.status(f"[bold cyan]拉取 {sym} {timeframe} × {days} 天历史..."):
         series = fetch_candles_history(sym, timeframe, days=days, market="futures")
     candles = series.candles
     if len(candles) < 300:
         console.print(f"[red]历史数据不足（{len(candles)} 根）[/red]")
         raise typer.Exit(1)
+
+    from analyst.data.bar_store import record_history
+
+    data_check = record_history(
+        candles, symbol=sym, timeframe=timeframe, market="futures"
+    )
+    gap = "通过" if data_check["ok"] else "有缺口"
+    console.print(
+        f"[dim]K 线自检 {gap}：{data_check['bars']} 根，缺 {data_check['missing_bars']} 根，"
+        f"已写入 ohlcv.sqlite {data_check['stored_bars']} 根[/dim]"
+    )
+    for note in data_check["warnings"]:
+        console.print(f"[yellow]· {note}[/yellow]")
 
     fn = STRATEGIES[strategy]
     kwargs = {}
@@ -848,9 +906,14 @@ def backtest_classic(
     t.add_row("夏普（年化）", f"{rep.sharpe:.2f}")
     t.add_row("调仓次数", str(rep.trades))
     t.add_row("持仓时间占比", f"{rep.exposure:.0%}")
-    t.add_row("成本假设", f"单边 {cost.one_way * 100:.3f}%")
+    t.add_row(
+        "成本假设",
+        f"手续费 {fee_pct:.3f}% + 滑点 {slippage_pct:.3f}% + 半价差 {spread_pct / 2:.3f}%",
+    )
     if funding is not None:
         t.add_row("资金费净损益", f"{rep.funding_pnl_pct:+.2f}%")
+    if vol_slip > 0:
+        t.add_row("波动滑点", f"{vol_slip:.0%} × ATR/价格")
     if vol_target > 0:
         t.add_row("波动率目标", f"年化 {vol_target:.0%}")
     for k, zh in (("bull", "牛市段"), ("bear", "熊市段"), ("chop", "震荡段")):
@@ -896,6 +959,15 @@ def backtest_classic(
                 console.print(
                     "[yellow]⚠ 超过四成窗口亏损：整体数字可能靠个别行情段撑起，谨慎。[/yellow]"
                 )
+
+    from analyst.backtest.robustness import robustness_bundle
+
+    bundle = robustness_bundle(
+        candles, positions, rep,
+        strategy=strategy, symbol=sym, timeframe=timeframe,
+        cost=cost, funding=funding, regime=kwargs.get("regime"),
+    )
+    _print_robustness(bundle)
     console.print(
         "[dim]提示：回测≠未来。上线前先小仓位验证，单笔风险 ≤ 账户 1%。[/dim]"
     )

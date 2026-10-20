@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
     schedule_task: asyncio.Task | None = None
     digest_task: asyncio.Task | None = None
     news_task: asyncio.Task | None = None
+    spot_task: asyncio.Task | None = None
     try:
         info = await hub.start_always_on_workers()
         try:
@@ -120,10 +121,17 @@ async def lifespan(app: FastAPI):
         news_task = asyncio.create_task(
             run_news_sentinel_loop(_notify), name="news-sentinel"
         )
+
+        from analyst.monitor.spot_radar import run_spot_radar_loop
+
+        spot_task = asyncio.create_task(
+            run_spot_radar_loop(_notify, hub.publish_spot_alerts),
+            name="spot-radar",
+        )
     except Exception:
         logger.exception("start always-on workers failed")
     yield
-    for task in (schedule_task, heartbeat_task, digest_task, news_task):
+    for task in (schedule_task, heartbeat_task, digest_task, news_task, spot_task):
         if task:
             task.cancel()
             try:

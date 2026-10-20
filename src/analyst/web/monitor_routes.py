@@ -460,6 +460,8 @@ class ClassicBacktestRequest(BaseModel):
     long_only: bool = True
     fee_pct: float = 0.05
     slippage_pct: float = 0.02
+    spread_pct: float = 0.01
+    vol_slip_atr_frac: float = Field(0.1, ge=0.0, le=1.0)
     oos_days: int = Field(365, ge=0, le=730)
     include_funding: bool = True
     vol_target: float = Field(0.0, ge=0.0, le=1.0)
@@ -476,6 +478,8 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
         label_regimes,
         simulate,
     )
+    from analyst.backtest.robustness import robustness_bundle
+    from analyst.data.bar_store import record_history
     from analyst.data.derivatives import fetch_funding_history
     from analyst.data.fetcher import fetch_candles_history
 
@@ -484,7 +488,12 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
 
     sym = _norm_symbol(req.symbol)
     tf = req.timeframe.strip().lower()
-    cost = CostModel(fee_pct=req.fee_pct, slippage_pct=req.slippage_pct)
+    cost = CostModel(
+        fee_pct=req.fee_pct,
+        slippage_pct=req.slippage_pct,
+        spread_pct=req.spread_pct,
+        vol_slip_atr_frac=req.vol_slip_atr_frac,
+    )
 
     import asyncio
 
@@ -494,6 +503,9 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
     candles = series.candles
     if len(candles) < 300:
         raise HTTPException(400, f"历史数据不足（{len(candles)} 根）")
+    data_check = await asyncio.to_thread(
+        record_history, candles, symbol=sym, timeframe=tf, market="futures"
+    )
 
     fn = STRATEGIES[req.strategy]
     kwargs: dict = {}
@@ -569,6 +581,22 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
             }
         )
 
+    bundle = await asyncio.to_thread(
+        robustness_bundle,
+        candles,
+        positions,
+        rep,
+        strategy=req.strategy,
+        symbol=sym,
+        timeframe=tf,
+        cost=cost,
+        funding=funding,
+        regime=kwargs.get("regime"),
+    )
+    # 窗口明细只留给 CLI；页面要汇总
+    wf = dict(bundle["walk_forward"])
+    wf.pop("windows", None)
+
     return {
         "report": rep.to_row(),
         "equity_curve": curve,
@@ -579,6 +607,12 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
             "bars": len(candles),
         },
         "cost_one_way_pct": round(cost.one_way * 100, 4),
+        "data_check": data_check,
+        "walk_forward": wf,
+        "cost_sensitivity": bundle["cost_sensitivity"],
+        "cost_2x_still_positive": bundle["cost_2x_still_positive"],
+        "deflated_sharpe": bundle["deflated_sharpe"],
+        "pbo": bundle["pbo"],
     }
 
 
@@ -620,6 +654,26 @@ async def monitor_digest(refresh: bool = Query(default=False)):
     except Exception as e:
         raise HTTPException(500, f"日报生成失败：{e}") from e
     return {"digest": out}
+
+
+@router.get("/api/spot-radar")
+def spot_radar_status():
+    """现货雷达最近一轮快照：涨幅榜、本轮命中、冷却后的新提醒。"""
+    from analyst.monitor.spot_radar import current_snapshot
+
+    return current_snapshot()
+
+
+@router.post("/api/spot-radar/scan")
+async def spot_radar_scan():
+    """立刻扫一轮现货。命中且过了冷却的提醒会进盯盘告警，并按配置推 Telegram。"""
+    from analyst.monitor.spot_radar import publish_scan
+
+    hub = get_monitor_hub()
+    try:
+        return await publish_scan(hub._notify_telegram_text, hub.publish_spot_alerts)
+    except Exception as exc:
+        raise HTTPException(500, f"现货扫描失败：{exc}") from exc
 
 
 @router.get("/api/monitor/news-events")

@@ -37,14 +37,22 @@ BARS_PER_YEAR = {
 
 @dataclass(frozen=True)
 class CostModel:
-    """单边成本 = taker 手续费 + 滑点（百分比）。"""
+    """单边成交成本（百分比）。
+
+    每次换手按名义价值收取：手续费 + 基础滑点 + 买卖价差的一半。
+    ``vol_slip_atr_frac`` > 0 时，换手再加「该比例 × 当根 ATR/价格」（只用已收盘数据）。
+    默认价差和波动滑点为 0，旧调用的成本数字不变。
+    """
 
     fee_pct: float = 0.05
     slippage_pct: float = 0.02
+    spread_pct: float = 0.0
+    vol_slip_atr_frac: float = 0.0
 
     @property
     def one_way(self) -> float:
-        return (self.fee_pct + self.slippage_pct) / 100.0
+        half_spread = self.spread_pct / 2.0
+        return (self.fee_pct + self.slippage_pct + half_spread) / 100.0
 
 
 @dataclass
@@ -68,6 +76,7 @@ class ClassicReport:
     regime_return_pct: dict[str, float] = field(default_factory=dict)
     regime_bars: dict[str, int] = field(default_factory=dict)
     equity_curve: list[float] = field(default_factory=list, repr=False)
+    bar_returns: list[float] = field(default_factory=list, repr=False)
 
     def to_row(self) -> dict:
         return {
@@ -250,6 +259,7 @@ def simulate(
 
     closes = [c.close for c in candles]
     labels = regime_labels or label_regimes(candles)
+    atrs = _atr_frac(candles) if cost.vol_slip_atr_frac > 0 else None
     equity = 1.0
     peak = 1.0
     max_dd = 0.0
@@ -275,7 +285,10 @@ def simulate(
         # 换手成本（在第 i 根收盘调仓）
         new_pos = positions[i]
         turnover = abs(new_pos - pos)
-        fee = turnover * cost.one_way
+        vol_extra = 0.0
+        if atrs is not None and turnover > 0:
+            vol_extra = turnover * cost.vol_slip_atr_frac * atrs[i]
+        fee = turnover * cost.one_way + vol_extra
         step = (1.0 + pnl) * (1.0 - fee)
         equity *= step
         rets.append(step - 1.0)
@@ -310,7 +323,25 @@ def simulate(
     report.regime_return_pct = {k: v * 100 for k, v in regime_ret.items()}
     report.regime_bars = regime_bars
     report.equity_curve = curve
+    report.bar_returns = rets
     return report
+
+
+def _atr_frac(candles: list[Candle], period: int = 14) -> list[float]:
+    """每根已收盘的 ATR/价格。不足窗口的位置为 0。"""
+    n = len(candles)
+    out = [0.0] * n
+    if n < period + 1:
+        return out
+    trs = [0.0]
+    for i in range(1, n):
+        c, prev = candles[i], candles[i - 1]
+        trs.append(max(c.high - c.low, abs(c.high - prev.close), abs(c.low - prev.close)))
+    for i in range(period, n):
+        atr = sum(trs[i - period + 1 : i + 1]) / period
+        px = candles[i].close
+        out[i] = atr / px if px > 0 else 0.0
+    return out
 
 
 def run_classic_backtest(

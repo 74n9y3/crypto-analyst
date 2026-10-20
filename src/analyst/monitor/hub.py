@@ -9,7 +9,7 @@ import time
 import urllib.request
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -511,6 +511,29 @@ class MonitorHub:
     def recent_alerts(self, limit: int = 50) -> list[dict[str, Any]]:
         items = list(self._alerts)
         return items[-limit:][::-1]
+
+    async def publish_spot_alerts(self, alerts: list[dict[str, Any]]) -> None:
+        """现货雷达命中：推进盯盘告警流，页面和已连接的浏览器都能看到。"""
+        now_ms = int(time.time() * 1000)
+        created = datetime.now(UTC).isoformat()
+        for index, alert in enumerate(alerts):
+            direction = "long" if alert.get("direction") == "up" else "short"
+            event = {
+                "type": "alert",
+                "rule": str(alert.get("rule") or "spot_signal"),
+                "title": alert.get("title") or "现货雷达",
+                "symbol": _norm_symbol(str(alert.get("pair") or alert.get("symbol") or "")),
+                "timeframe": str(alert.get("timeframe") or "1h"),
+                "direction": direction,
+                "strength": 0.55,
+                "price": alert.get("price"),
+                "reasons": [str(alert.get("detail") or "")],
+                "marker_time": now_ms + index,
+                "created_at": created,
+                "source": "spot_radar",
+            }
+            self._alerts.append(event)
+            await self._broadcast_all(event)
 
     def price_alert_book(self) -> PriceAlertBook:
         if self._price_alerts is None:

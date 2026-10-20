@@ -209,6 +209,28 @@ class Settings(BaseSettings):
     square_post_chart_width: int = Field(default=900)
     square_post_chart_height: int = Field(default=600)
 
+    # ── 现货雷达（只读币安现货公开行情，不下单）──
+    spot_radar_enabled: bool = Field(default=True)
+    spot_radar_base_url: str = Field(default="https://data-api.binance.vision")
+    spot_radar_top_n: int = Field(default=30)
+    spot_radar_min_quote_volume: float = Field(default=10_000_000)
+    spot_radar_interval_seconds: int = Field(default=900)
+    spot_radar_cooldown_seconds: int = Field(default=3600)
+    spot_radar_signal_cooldown_seconds: int = Field(default=14400)
+    spot_radar_majors: str = Field(default="BTCUSDT,ETHUSDT")
+    spot_radar_impulse_pct: float = Field(default=2.0)
+    spot_radar_major_impulse_pct: float = Field(default=1.2)
+    spot_radar_volume_multiple: float = Field(default=2.0)
+    spot_radar_volume_min_abs_pct: float = Field(default=1.0)
+    spot_radar_signal_top_k: int = Field(default=5)
+    spot_radar_signal_min_4h_pct: float = Field(default=2.0)
+    spot_radar_range_break_min_pct: float = Field(default=0.3)
+    spot_radar_sma_fast: int = Field(default=20)
+    spot_radar_sma_slow: int = Field(default=60)
+    spot_radar_telegram: bool = Field(default=True)
+    # 每天迪拜 08:00 一份 BTC/ETH 现货简报，只读行情，不下单
+    spot_radar_brief_enabled: bool = Field(default=True)
+
     # ── 新闻事件风控哨兵 ──
     monitor_news_enabled: bool = Field(default=True)
     monitor_news_interval_min: int = Field(default=30)
