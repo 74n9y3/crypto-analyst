@@ -509,3 +509,15 @@ crypto-analyst/
 - 周期日历是「刻舟求剑」模型，里程碑日期有贴合历史的风险，要和当下盘面一起看。
 - 波段锁点、三盘打法、Eric 规则都是结构或统计启发式，不是对任何公开交易笔记的复刻保证。
 - 自动发到币安广场的内容会公开。先用 `analyst square-post` 看文案，确认 key 与品种后再开 `SQUARE_POST_ENABLED`。
+
+---
+
+## 打赏
+
+项目免费使用。若它帮到你，可以用对应网络的 **USDT** 打赏（请选对链，避免资产无法入账）：
+
+| 网络 | 代币 | 地址 |
+|------|------|------|
+| BSC | USDT (BEP-20) | `0x6E7359A42C466893E9A835fD6aFdb82E0D1Ed32d` |
+| Solana | USDT | `Hm7f6wGdvcmLmbcXV7sdLYGJKBdwGoFrJTZPzeN8dpan` |
+| Tron | USDT (TRC-20) | `TGNrpZBqD8jnfNCb7B9W93qMmVHycoFsKJ` |
