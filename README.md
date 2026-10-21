@@ -6,6 +6,23 @@
 
 顶栏：**盯盘** → **周期** → **日程** → **现货雷达** → **策略库** → **回测** → **纸面交易** → **AI 助手**。手机浏览器可「添加到主屏幕」（PWA）。
 
+<div align="center">
+<h3>☕ 请我一杯咖啡</h3>
+<p>项目免费。若它帮你盯住过行情，欢迎用对应网络的 <strong>USDT</strong> 打赏。<br/>
+<sub>请按下面的网络转入，网络不一致会无法入账。</sub></p>
+<p>
+  <img alt="BSC USDT" src="https://img.shields.io/badge/BSC-USDT%20BEP--20-F3BA2F?style=for-the-badge&logo=binance&logoColor=white" />
+  <img alt="Solana USDT" src="https://img.shields.io/badge/Solana-USDT-9945FF?style=for-the-badge&logo=solana&logoColor=white" />
+  <img alt="Tron USDT" src="https://img.shields.io/badge/Tron-USDT%20TRC--20-FF060A?style=for-the-badge&logo=tron&logoColor=white" />
+</p>
+</div>
+
+| 网络 | 打赏地址 |
+|:----:|:---------|
+| ![BSC](https://img.shields.io/badge/BSC-F3BA2F?style=flat-square&logo=binance&logoColor=white) **USDT · BEP-20** | `0x6E7359A42C466893E9A835fD6aFdb82E0D1Ed32d` |
+| ![Solana](https://img.shields.io/badge/Solana-9945FF?style=flat-square&logo=solana&logoColor=white) **USDT** | `Hm7f6wGdvcmLmbcXV7sdLYGJKBdwGoFrJTZPzeN8dpan` |
+| ![Tron](https://img.shields.io/badge/Tron-FF060A?style=flat-square&logo=tron&logoColor=white) **USDT · TRC-20** | `TGNrpZBqD8jnfNCb7B9W93qMmVHycoFsKJ` |
+
 <p align="center">
   <img src="docs/images/web-dashboard.png" alt="Web 盯盘：K 线、关键位与 AI 分析" width="900" />
 </p>
@@ -509,15 +526,3 @@ crypto-analyst/
 - 周期日历是「刻舟求剑」模型，里程碑日期有贴合历史的风险，要和当下盘面一起看。
 - 波段锁点、三盘打法、Eric 规则都是结构或统计启发式，不是对任何公开交易笔记的复刻保证。
 - 自动发到币安广场的内容会公开。先用 `analyst square-post` 看文案，确认 key 与品种后再开 `SQUARE_POST_ENABLED`。
-
----
-
-## 打赏
-
-项目免费使用。若它帮到你，可以用对应网络的 **USDT** 打赏（请选对链，避免资产无法入账）：
-
-| 网络 | 代币 | 地址 |
-|------|------|------|
-| BSC | USDT (BEP-20) | `0x6E7359A42C466893E9A835fD6aFdb82E0D1Ed32d` |
-| Solana | USDT | `Hm7f6wGdvcmLmbcXV7sdLYGJKBdwGoFrJTZPzeN8dpan` |
-| Tron | USDT (TRC-20) | `TGNrpZBqD8jnfNCb7B9W93qMmVHycoFsKJ` |
