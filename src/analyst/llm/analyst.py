@@ -22,7 +22,13 @@ from typing import Any
 
 from analyst.compute.plan import TradePlan
 from analyst.config import get_settings
-from analyst.llm.prompts import language_directive, load_system_prompt, load_user_template
+from analyst.i18n import L
+from analyst.llm.prompts import (
+    language_directive,
+    load_system_prompt,
+    load_user_template,
+    normalize_lang,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -275,14 +281,14 @@ def analyze_market(
     user_account: dict | None = None,
     *,
     free_only: bool = False,
-    lang: str = "zh",
+    lang: str | None = None,
 ) -> LLMResponse:
     """让 AI 分析市场并给出交易计划。
 
     Args:
         free_only: True 时只走 b.ai（限时免费）和其它免费前置层，
                    失败不回落 DeepSeek / Anthropic 等付费线路。盯盘自动「候选确认」应开启。
-        lang: 论述输出语言，``zh``（默认）或 ``en``。
+        lang: 论述输出语言，``zh`` 或 ``en``；None 跟随全局输出语言。
     """
     settings = get_settings()
     provider = settings.llm_provider.lower()
@@ -291,16 +297,24 @@ def analyze_market(
 
     if free_only and not free_eps and not bai:
         raise RuntimeError(
-            "盯盘 AI 确认仅用免费模型：请至少配置 BAI_API_KEY / GROQ_API_KEY / "
-            "CEREBRAS_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY / "
-            "SAMBANOVA_API_KEY / NVIDIA_API_KEY 之一"
-            "（且 LLM_TRY_BAI_AFTER_GROQ=true 才会启用 b.ai，"
-            "LLM_TRY_GROQ_FIRST=true 才会启用 Groq），"
-            "不会回落 DeepSeek / Anthropic 等付费线路"
+            L(
+                "盯盘 AI 确认仅用免费模型：请至少配置 BAI_API_KEY / GROQ_API_KEY / "
+                "CEREBRAS_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY / "
+                "SAMBANOVA_API_KEY / NVIDIA_API_KEY 之一"
+                "（且 LLM_TRY_BAI_AFTER_GROQ=true 才会启用 b.ai，"
+                "LLM_TRY_GROQ_FIRST=true 才会启用 Groq），"
+                "不会回落 DeepSeek / Anthropic 等付费线路",
+                "Monitor AI confirmation uses free models only: configure at least one of "
+                "BAI_API_KEY / GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY / "
+                "OPENROUTER_API_KEY / SAMBANOVA_API_KEY / NVIDIA_API_KEY "
+                "(b.ai needs LLM_TRY_BAI_AFTER_GROQ=true, Groq needs LLM_TRY_GROQ_FIRST=true); "
+                "it never falls back to paid providers such as DeepSeek / Anthropic",
+            )
         )
 
     system = load_system_prompt(settings.llm_prompt_version)
     template = load_user_template(settings.llm_prompt_version)
+    lang = normalize_lang(lang)
     lang_note = language_directive(lang)
     user_msg = _build_user_message(template, market_snapshot, indicators_snapshot, user_account) + lang_note
 
@@ -310,7 +324,10 @@ def analyze_market(
         if provider in ("deepseek", "openai"):
             return _call_openai_compatible(system, user_msg, settings)
         raise ValueError(
-            f"不支持的 LLM_PROVIDER: {provider}（可选: deepseek / openai / anthropic）"
+            L(
+                f"不支持的 LLM_PROVIDER: {provider}（可选: deepseek / openai / anthropic）",
+                f"Unsupported LLM_PROVIDER: {provider} (options: deepseek / openai / anthropic)",
+            )
         )
 
     free_errors: list[str] = []
@@ -370,15 +387,19 @@ def analyze_market(
 
         if free_only:
             raise RuntimeError(
-                "盯盘 AI 确认仅用免费线路，全部失败: " + " | ".join(free_errors)
+                L("盯盘 AI 确认仅用免费线路，全部失败: ", "Monitor AI confirmation (free providers only) failed on all providers: ")
+                + " | ".join(free_errors)
             )
 
     if free_only:
         if free_errors:
             raise RuntimeError(
-                "盯盘 AI 确认仅用免费线路，全部失败: " + " | ".join(free_errors)
+                L("盯盘 AI 确认仅用免费线路，全部失败: ", "Monitor AI confirmation (free providers only) failed on all providers: ")
+                + " | ".join(free_errors)
             )
-        raise RuntimeError("盯盘 AI 确认 free_only=True，拒绝付费回落")
+        raise RuntimeError(
+            L("盯盘 AI 确认 free_only=True，拒绝付费回落", "Monitor AI confirmation has free_only=True; refusing paid fallback")
+        )
 
     return _fallback()
 
@@ -399,7 +420,7 @@ def _call_anthropic(system: str, user_msg: str, settings) -> LLMResponse:
     from anthropic import Anthropic
 
     if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY 未配置")
+        raise RuntimeError(L("ANTHROPIC_API_KEY 未配置", "ANTHROPIC_API_KEY is not configured"))
 
     client = Anthropic(api_key=settings.anthropic_api_key)
 
@@ -417,7 +438,9 @@ def _call_anthropic(system: str, user_msg: str, settings) -> LLMResponse:
 
     tool_use = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_use is None:
-        raise RuntimeError(f"Anthropic 未返回 tool_use。响应: {response.content}")
+        raise RuntimeError(
+            L(f"Anthropic 未返回 tool_use。响应: {response.content}", f"Anthropic returned no tool_use. Response: {response.content}")
+        )
 
     payload = tool_use.input
     cost = _estimate_cost(
@@ -659,7 +682,10 @@ def _call_openai_compatible(
         )
     if not api_key:
         raise RuntimeError(
-            f"{prov.upper()}_API_KEY 未配置，请检查 .env 文件"
+            L(
+                f"{prov.upper()}_API_KEY 未配置，请检查 .env 文件",
+                f"{prov.upper()}_API_KEY is not configured; check your .env file",
+            )
         )
 
     if override_base_url is not None:
@@ -710,9 +736,14 @@ def _call_openai_compatible(
         fr = getattr(choice, "finish_reason", None)
         combined = _assistant_message_combined_text(msg)
         raise RuntimeError(
-            f"{prov} 未返回 submit_analysis 的有效 tool_calls，且无法从文本解析 JSON。"
-            f" finish_reason={fr!r}。"
-            f" 合并文本节选: {combined[:500]!r}"
+            L(
+                f"{prov} 未返回 submit_analysis 的有效 tool_calls，且无法从文本解析 JSON。"
+                f" finish_reason={fr!r}。"
+                f" 合并文本节选: {combined[:500]!r}",
+                f"{prov} returned no valid submit_analysis tool_calls and no JSON could be parsed from text."
+                f" finish_reason={fr!r}."
+                f" Text excerpt: {combined[:500]!r}",
+            )
         )
 
     usage = response.usage
@@ -945,7 +976,9 @@ def _payload_to_plan(payload: dict) -> TradePlan:
     def _req_float(key: str) -> float:
         v = payload.get(key)
         if v is None or (isinstance(v, str) and v.strip().lower() in ("", "null", "none")):
-            raise ValueError(f"字段 {key!r} 为 null 或缺失，无法生成计划")
+            raise ValueError(
+                L(f"字段 {key!r} 为 null 或缺失，无法生成计划", f"Field {key!r} is null or missing; cannot build a plan")
+            )
         return float(v)
 
     return TradePlan(

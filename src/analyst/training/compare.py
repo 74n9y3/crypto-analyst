@@ -7,6 +7,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from analyst.compute.plan import TradePlan
+from analyst.i18n import L
 
 
 @dataclass
@@ -27,9 +28,14 @@ def compare_plans(user: TradePlan, ai: TradePlan) -> PlanDiff:
     same_dir = user.direction == ai.direction
 
     if same_dir:
-        notes.append(f"✅ 方向一致：均为 {user.direction}")
+        notes.append(L(f"✅ 方向一致：均为 {user.direction}", f"✅ Same direction: both {user.direction}"))
     else:
-        notes.append(f"⚠️  方向不一致：你 {user.direction}，AI {ai.direction}")
+        notes.append(
+            L(
+                f"⚠️  方向不一致：你 {user.direction}，AI {ai.direction}",
+                f"⚠️  Direction mismatch: you {user.direction}, AI {ai.direction}",
+            )
+        )
 
     # 任一为 wait，无意义比较细节
     if user.direction == "wait" or ai.direction == "wait":
@@ -47,9 +53,14 @@ def compare_plans(user: TradePlan, ai: TradePlan) -> PlanDiff:
         user.entry_low <= ai.entry_high and ai.entry_low <= user.entry_high
     )
     if entry_overlap:
-        notes.append("✅ 入场区有重叠")
+        notes.append(L("✅ 入场区有重叠", "✅ Entry zones overlap"))
     else:
-        notes.append("⚠️  入场区不重叠 - 你和 AI 看的位置不一样")
+        notes.append(
+            L(
+                "⚠️  入场区不重叠 - 你和 AI 看的位置不一样",
+                "⚠️  Entry zones do not overlap - you and the AI are watching different levels",
+            )
+        )
 
     stop_diff_pct = (
         abs(user.stop_loss - ai.stop_loss) / ai.stop_loss * 100
@@ -63,19 +74,24 @@ def compare_plans(user: TradePlan, ai: TradePlan) -> PlanDiff:
     )
 
     if stop_diff_pct < 0.5:
-        notes.append(f"✅ 止损接近（差 {stop_diff_pct:.2f}%）")
+        notes.append(L(f"✅ 止损接近（差 {stop_diff_pct:.2f}%）", f"✅ Stops are close (diff {stop_diff_pct:.2f}%)"))
     elif stop_diff_pct < 2.0:
-        notes.append(f"📍 止损略不同（差 {stop_diff_pct:.2f}%）")
+        notes.append(L(f"📍 止损略不同（差 {stop_diff_pct:.2f}%）", f"📍 Stops differ slightly (diff {stop_diff_pct:.2f}%)"))
     else:
-        notes.append(f"⚠️  止损差距大（差 {stop_diff_pct:.2f}%）")
+        notes.append(L(f"⚠️  止损差距大（差 {stop_diff_pct:.2f}%）", f"⚠️  Stops differ a lot (diff {stop_diff_pct:.2f}%)"))
 
     rr_diff = user.rr_ratio - ai.rr_ratio
     if abs(rr_diff) < 0.3:
-        notes.append(f"✅ R:R 接近（你 {user.rr_ratio:.2f} vs AI {ai.rr_ratio:.2f}）")
+        notes.append(
+            L(
+                f"✅ R:R 接近（你 {user.rr_ratio:.2f} vs AI {ai.rr_ratio:.2f}）",
+                f"✅ R:R is close (you {user.rr_ratio:.2f} vs AI {ai.rr_ratio:.2f})",
+            )
+        )
     elif rr_diff > 0:
-        notes.append(f"📍 你的 R:R 更高（+{rr_diff:.2f}）")
+        notes.append(L(f"📍 你的 R:R 更高（+{rr_diff:.2f}）", f"📍 Your R:R is higher (+{rr_diff:.2f})"))
     else:
-        notes.append(f"📍 AI 的 R:R 更高（{rr_diff:.2f}）")
+        notes.append(L(f"📍 AI 的 R:R 更高（{rr_diff:.2f}）", f"📍 AI R:R is higher ({rr_diff:.2f})"))
 
     user_more_conservative = (
         user.direction == "long"
@@ -88,7 +104,7 @@ def compare_plans(user: TradePlan, ai: TradePlan) -> PlanDiff:
     )
 
     if user_more_conservative:
-        notes.append("📍 你的方案整体更保守")
+        notes.append(L("📍 你的方案整体更保守", "📍 Your plan is more conservative overall"))
 
     return PlanDiff(
         same_direction=same_dir,
@@ -124,29 +140,29 @@ def render_comparison(
     if console is None:
         console = Console()
 
-    table = Table(title="🥋 你 vs AI", show_lines=True)
-    table.add_column("项目", style="cyan", no_wrap=True)
-    table.add_column("你", style="yellow")
+    table = Table(title=L("🥋 你 vs AI", "🥋 You vs AI"), show_lines=True)
+    table.add_column(L("项目", "Item"), style="cyan", no_wrap=True)
+    table.add_column(L("你", "You"), style="yellow")
     table.add_column("AI", style="green")
 
-    table.add_row("方向", user.direction, ai.direction)
+    table.add_row(L("方向", "Direction"), user.direction, ai.direction)
     table.add_row(
-        "入场区",
+        L("入场区", "Entry zone"),
         f"{user.entry_low:.2f} - {user.entry_high:.2f}" if user.direction != "wait" else "-",
         f"{ai.entry_low:.2f} - {ai.entry_high:.2f}" if ai.direction != "wait" else "-",
     )
     table.add_row(
-        "止损",
+        L("止损", "Stop loss"),
         f"{user.stop_loss:.2f}" if user.direction != "wait" else "-",
         f"{ai.stop_loss:.2f}" if ai.direction != "wait" else "-",
     )
     table.add_row(
-        "止盈 1",
+        L("止盈 1", "Take profit 1"),
         f"{user.take_profit_1:.2f}" if user.direction != "wait" else "-",
         f"{ai.take_profit_1:.2f}" if ai.direction != "wait" else "-",
     )
     table.add_row(
-        "止盈 2",
+        L("止盈 2", "Take profit 2"),
         f"{user.take_profit_2:.2f}" if user.take_profit_2 else "-",
         f"{ai.take_profit_2:.2f}" if ai.take_profit_2 else "-",
     )
@@ -155,10 +171,10 @@ def render_comparison(
     console.print(table)
 
     notes_text = "\n".join(diff.notes)
-    console.print(Panel(notes_text, title="差异分析", border_style="blue"))
+    console.print(Panel(notes_text, title=L("差异分析", "Differences"), border_style="blue"))
 
-    console.print("\n[bold green]🤖 AI 论述：[/bold green]")
+    console.print(L("\n[bold green]🤖 AI 论述：[/bold green]", "\n[bold green]🤖 AI rationale:[/bold green]"))
     console.print(Panel(ai.rationale, border_style="green"))
 
-    console.print("\n[bold yellow]🧠 你的理由：[/bold yellow]")
+    console.print(L("\n[bold yellow]🧠 你的理由：[/bold yellow]", "\n[bold yellow]🧠 Your reasoning:[/bold yellow]"))
     console.print(Panel(user.rationale, border_style="yellow"))

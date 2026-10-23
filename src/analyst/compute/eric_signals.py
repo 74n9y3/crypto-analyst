@@ -16,6 +16,7 @@ from typing import Literal
 from analyst.compute.band_filter import BandFilterSnapshot, compute_band_filter
 from analyst.compute.indicators import compute_macd, ema
 from analyst.data.fetcher import CandleSeries
+from analyst.i18n import L
 
 
 def rsi_series(closes: list[float], period: int = 14) -> list[float]:
@@ -341,14 +342,21 @@ def evaluate_eric(
             htf_bias=htf_bias,
             rr=_rr(tgt, stop, "long"),
         )
-        tag = f"波段过滤器(近似) {bf.value:.1f}" + (" 深超卖" if deep else " 超卖")
+        tag = L(
+            f"波段过滤器(近似) {bf.value:.1f}" + (" 深超卖" if deep else " 超卖"),
+            f"Band filter (approx) {bf.value:.1f}" + (" deep oversold" if deep else " oversold"),
+        )
         if bf.turned_up:
-            tag += "·拐头"
+            tag += L("·拐头", "·turned up")
         if bf.streak >= 2:
-            tag += f"·多{bf.streak}"
-        reasons = [tag, f"Buff={buff.score}（{'+'.join(buff.tags) or '无'}）", "定性：技术性反弹，不赌趋势反转"]
+            tag += L(f"·多{bf.streak}", f"·long x{bf.streak}")
+        reasons = [
+            tag,
+            L(f"Buff={buff.score}（{'+'.join(buff.tags) or '无'}）", f"Buff={buff.score} ({'+'.join(buff.tags) or 'none'})"),
+            L("定性：技术性反弹，不赌趋势反转", "Note: technical bounce, not a trend reversal bet"),
+        ]
         if tgt:
-            reasons.append(f"反弹目标参考 {tgt:.6g}")
+            reasons.append(L(f"反弹目标参考 {tgt:.6g}", f"Bounce target {tgt:.6g}"))
         out.append(
             EricSignal(
                 kind="oversold",
@@ -369,7 +377,10 @@ def evaluate_eric(
                     rsi=cur_r,
                     strength=min(0.95, 0.7 + 0.04 * buff.score),
                     reasons=[
-                        f"Buff达标 {buff.score}≥{min_buff}：{' + '.join(buff.tags)}",
+                        L(
+                            f"Buff达标 {buff.score}≥{min_buff}：{' + '.join(buff.tags)}",
+                            f"Buff met {buff.score}≥{min_buff}: {' + '.join(buff.tags)}",
+                        ),
                         *reasons[2:],
                     ],
                     target=tgt,
@@ -397,14 +408,21 @@ def evaluate_eric(
             htf_bias=htf_bias,
             rr=_rr(tgt, stop, "short"),
         )
-        tag = f"波段过滤器(近似) {bf.value:.1f}" + (" 深超买" if deep else " 超买")
+        tag = L(
+            f"波段过滤器(近似) {bf.value:.1f}" + (" 深超买" if deep else " 超买"),
+            f"Band filter (approx) {bf.value:.1f}" + (" deep overbought" if deep else " overbought"),
+        )
         if bf.turned_down:
-            tag += "·拐头"
+            tag += L("·拐头", "·turned down")
         if bf.streak >= 2:
-            tag += f"·空{bf.streak}（二级/三级顶部超买）"
-        reasons = [tag, f"Buff={buff.score}（{'+'.join(buff.tags) or '无'}）", "宜在压力处机械止盈或布局回落"]
+            tag += L(f"·空{bf.streak}（二级/三级顶部超买）", f"·short x{bf.streak} (2nd/3rd-top overbought)")
+        reasons = [
+            tag,
+            L(f"Buff={buff.score}（{'+'.join(buff.tags) or '无'}）", f"Buff={buff.score} ({'+'.join(buff.tags) or 'none'})"),
+            L("宜在压力处机械止盈或布局回落", "Take profit mechanically at resistance, or fade"),
+        ]
         if tgt:
-            reasons.append(f"回落参考 {tgt:.6g}")
+            reasons.append(L(f"回落参考 {tgt:.6g}", f"Fade target {tgt:.6g}"))
         out.append(
             EricSignal(
                 kind="overbought",
@@ -425,7 +443,10 @@ def evaluate_eric(
                     rsi=cur_r,
                     strength=min(0.95, 0.7 + 0.04 * buff.score),
                     reasons=[
-                        f"Buff达标 {buff.score}≥{min_buff}：{' + '.join(buff.tags)}",
+                        L(
+                            f"Buff达标 {buff.score}≥{min_buff}：{' + '.join(buff.tags)}",
+                            f"Buff met {buff.score}≥{min_buff}: {' + '.join(buff.tags)}",
+                        ),
                         *reasons[2:],
                     ],
                     target=tgt,
@@ -451,9 +472,9 @@ def evaluate_eric(
                     rsi=cur_r,
                     strength=min(0.9, 0.68 + 0.03 * buff.score),
                     reasons=[
-                        f"回踩 EMA {ema_sup:.6g} + 超卖区",
-                        f"Buff={buff.score}：{'+'.join(buff.tags)}",
-                        "止损好设，仓位好推（CycleStudies 回踩逻辑）",
+                        L(f"回踩 EMA {ema_sup:.6g} + 超卖区", f"Pullback to EMA {ema_sup:.6g} + oversold"),
+                        L(f"Buff={buff.score}：{'+'.join(buff.tags)}", f"Buff={buff.score}: {'+'.join(buff.tags)}"),
+                        L("止损好设，仓位好推（CycleStudies 回踩逻辑）", "Clean stop, easy size (CycleStudies pullback)"),
                     ],
                     target=tgt,
                     stop_hint=stop,
@@ -478,9 +499,9 @@ def evaluate_eric(
                     rsi=cur_r,
                     strength=min(0.9, 0.68 + 0.03 * buff.score),
                     reasons=[
-                        f"均线压力 EMA {ema_res:.6g} + 超买区",
-                        f"Buff={buff.score}：{'+'.join(buff.tags)}",
-                        "机械止盈/布局回落，不追空杀跌",
+                        L(f"均线压力 EMA {ema_res:.6g} + 超买区", f"EMA resistance {ema_res:.6g} + overbought"),
+                        L(f"Buff={buff.score}：{'+'.join(buff.tags)}", f"Buff={buff.score}: {'+'.join(buff.tags)}"),
+                        L("机械止盈/布局回落，不追空杀跌", "Mechanical take-profit / fade; don't chase shorts"),
                     ],
                     target=tgt,
                     stop_hint=stop,
@@ -499,8 +520,11 @@ def evaluate_eric(
                     rsi=cur_r,
                     strength=0.88,
                     reasons=[
-                        f"多周期超卖共振：本周期 BF={bf.value:.1f} · HTF BF={htf_bf.value:.1f}（{htf_bf.zone}）",
-                        "大小周期同向极值，优先进场窗口",
+                        L(
+                            f"多周期超卖共振：本周期 BF={bf.value:.1f} · HTF BF={htf_bf.value:.1f}（{htf_bf.zone}）",
+                            f"MTF oversold confluence: this TF BF={bf.value:.1f} · HTF BF={htf_bf.value:.1f} ({htf_bf.zone})",
+                        ),
+                        L("大小周期同向极值，优先进场窗口", "Same-side extremes on higher TF: preferred entry window"),
                     ],
                     target=long_targets[0] if long_targets else None,
                     stop_hint=structure_support,
@@ -516,8 +540,11 @@ def evaluate_eric(
                     rsi=cur_r,
                     strength=0.88,
                     reasons=[
-                        f"多周期超买共振：本周期 BF={bf.value:.1f} · HTF BF={htf_bf.value:.1f}（{htf_bf.zone}）",
-                        "大小周期同向极值，优先止盈/做空窗口",
+                        L(
+                            f"多周期超买共振：本周期 BF={bf.value:.1f} · HTF BF={htf_bf.value:.1f}（{htf_bf.zone}）",
+                            f"MTF overbought confluence: this TF BF={bf.value:.1f} · HTF BF={htf_bf.value:.1f} ({htf_bf.zone})",
+                        ),
+                        L("大小周期同向极值，优先止盈/做空窗口", "Same-side extremes on higher TF: preferred take-profit / short window"),
                     ],
                     target=short_targets[0] if short_targets else None,
                     stop_hint=structure_resist,
@@ -534,7 +561,7 @@ def evaluate_eric(
                 kind="bull_div",
                 rsi=cur_r,
                 strength=0.68 if macd_div == "bull" else 0.64,
-                reasons=[f"价创新低但 {src} 抬高（底背离）", f"RSI={cur_r:.1f}"],
+                reasons=[L(f"价创新低但 {src} 抬高（底背离）", f"Price made a new low but {src} rose (bullish divergence)"), f"RSI={cur_r:.1f}"],
                 target=long_targets[0] if long_targets else None,
                 filter_value=fv,
             )
@@ -546,7 +573,7 @@ def evaluate_eric(
                 kind="bear_div",
                 rsi=cur_r,
                 strength=0.68 if macd_div == "bear" else 0.64,
-                reasons=[f"价创新高但 {src} 走弱（顶背离）", f"RSI={cur_r:.1f}"],
+                reasons=[L(f"价创新高但 {src} 走弱（顶背离）", f"Price made a new high but {src} weakened (bearish divergence)"), f"RSI={cur_r:.1f}"],
                 target=short_targets[0] if short_targets else None,
                 filter_value=fv,
             )

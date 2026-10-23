@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
+from analyst.i18n import L
+
 
 @dataclass
 class SeedPositionPlan:
@@ -47,9 +49,9 @@ def plan_seed_position(
         add_mode: pullback=回踩补仓；breakout=突破补仓；none=只开头仓
     """
     if account_usd <= 0:
-        raise ValueError("account_usd 必须 > 0")
+        raise ValueError(L("account_usd 必须 > 0", "account_usd must be > 0"))
     if leverage <= 0:
-        raise ValueError("leverage 必须 > 0")
+        raise ValueError(L("leverage 必须 > 0", "leverage must be > 0"))
     seed_pct = min(max(seed_pct, 0.01), 0.10)
     # 推文仓位：25x 基准头仓+补仓≤25%；杠杆加倍则仓位减半（50x→12.5%，100x→6.25%）
     exposure_cap = min(0.25, 0.25 * (25.0 / leverage))
@@ -65,17 +67,22 @@ def plan_seed_position(
     total_notional = total_margin * leverage
 
     mode_zh = {
-        "pullback": "回踩补仓（原计划低多点）",
-        "breakout": "突破补仓（站稳后加）",
-        "none": "仅头仓",
+        "pullback": L("回踩补仓（原计划低多点）", "Add on pullback (at the planned long entry)"),
+        "breakout": L("突破补仓（站稳后加）", "Add on breakout (after it holds)"),
+        "none": L("仅头仓", "Seed position only"),
     }[add_mode]
 
-    note = (
+    note = L(
         f"头仓 {seed_pct*100:.1f}%≈{seed_margin:.0f}U 保证金（名义≈{seed_notional:.0f}U @ {leverage:.0f}x）；"
         f"补仓模式={mode_zh}，补仓 {add_pct*100:.1f}%≈{add_margin:.0f}U；"
         f"合计≤{max_total_pct*100:.0f}%（25x 基准≤25%，杠杆升高则同比例下调）。"
         f"只在浮盈后突破才加重仓；勿把盈利滚进下一笔本金。"
-        f"若已回踩补仓则禁止再在突破处二次加仓。"
+        f"若已回踩补仓则禁止再在突破处二次加仓。",
+        f"Seed {seed_pct*100:.1f}%≈{seed_margin:.0f}U margin (notional≈{seed_notional:.0f}U @ {leverage:.0f}x); "
+        f"add mode={mode_zh}, add {add_pct*100:.1f}%≈{add_margin:.0f}U; "
+        f"total≤{max_total_pct*100:.0f}% (≤25% at 25x, scaled down proportionally at higher leverage). "
+        f"Only size up on a breakout while in profit; don't roll profits into the next trade's principal. "
+        f"If you already added on the pullback, do not add again on the breakout.",
     )
 
     return SeedPositionPlan(

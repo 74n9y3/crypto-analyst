@@ -6,6 +6,7 @@
 from collections import Counter
 from dataclasses import dataclass
 
+from analyst.i18n import L
 from analyst.storage import repo
 
 
@@ -18,30 +19,36 @@ class WeaknessPattern:
     suggestion: str
 
 
-PATTERN_INFO: dict[str, tuple[str, str]] = {
+PATTERN_INFO: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
     "direction_wrong": (
-        "方向判断错误",
-        "检查多周期判定流程：先大周期定调，再小周期找入场",
+        ("方向判断错误", "Wrong direction call"),
+        (
+            "检查多周期判定流程：先大周期定调，再小周期找入场",
+            "Review the multi-timeframe process: set the bias on the higher timeframe, then find entries on the lower one",
+        ),
     ),
     "low_rr": (
-        "盈亏比不足 2:1",
-        "强制 R:R ≥ 2 才入场，宁可错过不可做错",
+        ("盈亏比不足 2:1", "Reward/risk below 2:1"),
+        ("强制 R:R ≥ 2 才入场，宁可错过不可做错", "Only enter with R:R ≥ 2; better to miss a trade than take a bad one"),
     ),
     "no_trigger": (
-        "入场区设得太死",
-        "把入场区放宽到 0.5-0.618 fib 之间，不要追单点",
+        ("入场区设得太死", "Entry zone too narrow"),
+        (
+            "把入场区放宽到 0.5-0.618 fib 之间，不要追单点",
+            "Widen the entry zone to the 0.5-0.618 fib range instead of a single price",
+        ),
     ),
     "underperform_ai": (
-        "方向对但收益不如 AI",
-        "止损止盈可能过保守，或入场点不准",
+        ("方向对但收益不如 AI", "Right direction but worse result than AI"),
+        ("止损止盈可能过保守，或入场点不准", "Stops/targets may be too conservative, or the entry is off"),
     ),
     "stop_too_tight": (
-        "止损过紧被扫",
-        "至少用 1.5*ATR 作止损距离，避免噪音扫损",
+        ("止损过紧被扫", "Stop too tight, got wicked out"),
+        ("至少用 1.5*ATR 作止损距离，避免噪音扫损", "Use at least 1.5*ATR stop distance to avoid noise stop-outs"),
     ),
     "trade_in_range": (
-        "震荡市强行交易",
-        "无明确趋势时观望，等结构清晰",
+        ("震荡市强行交易", "Forcing trades in a range"),
+        ("无明确趋势时观望，等结构清晰", "Stay flat without a clear trend; wait for structure to clear up"),
     ),
 }
 
@@ -95,8 +102,8 @@ def detect_weaknesses(top_n: int = 5) -> list[WeaknessPattern]:
                 name=name,
                 occurrences=count,
                 pct=count / total * 100,
-                description=desc,
-                suggestion=sugg,
+                description=L(*desc),
+                suggestion=L(*sugg),
             )
         )
 

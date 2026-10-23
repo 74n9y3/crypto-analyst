@@ -11,6 +11,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from analyst.i18n import L
+
 app = typer.Typer(
     name="analyst",
     help="📊 Crypto Analyst - AI 行情分析、预测与结果验证",
@@ -82,14 +84,24 @@ def _render_market(ctx) -> None:
         border_style="cyan",
     )
 
+    res = ", ".join(f"{r:.2f}" for r in structure.resistances) or "-"
+    sup = ", ".join(f"{s:.2f}" for s in structure.supports) or "-"
     structure_panel = Panel(
-        f"趋势：[bold]{structure.trend}[/bold]\n"
-        f"近高：{structure.recent_high:.2f}\n"
-        f"近低：{structure.recent_low:.2f}\n"
-        f"分界：{structure.key_pivot:.2f}\n"
-        f"阻力：{', '.join(f'{r:.2f}' for r in structure.resistances) or '-'}\n"
-        f"支撑：{', '.join(f'{s:.2f}' for s in structure.supports) or '-'}",
-        title="📐 结构",
+        L(
+            f"趋势：[bold]{structure.trend}[/bold]\n"
+            f"近高：{structure.recent_high:.2f}\n"
+            f"近低：{structure.recent_low:.2f}\n"
+            f"分界：{structure.key_pivot:.2f}\n"
+            f"阻力：{res}\n"
+            f"支撑：{sup}",
+            f"Trend: [bold]{structure.trend}[/bold]\n"
+            f"Recent high: {structure.recent_high:.2f}\n"
+            f"Recent low: {structure.recent_low:.2f}\n"
+            f"Pivot: {structure.key_pivot:.2f}\n"
+            f"Resistance: {res}\n"
+            f"Support: {sup}",
+        ),
+        title=L("📐 结构", "📐 Structure"),
         border_style="magenta",
     )
 
@@ -100,7 +112,7 @@ def _render_market(ctx) -> None:
         f"0.618: {fib.retr_618:.2f}\n"
         f"0.786: {fib.retr_786:.2f}\n"
         f"1.272: {fib.ext_1272:.2f}",
-        title="🔢 斐波回撤",
+        title=L("🔢 斐波回撤", "🔢 Fibonacci"),
         border_style="blue",
     )
 
@@ -111,14 +123,22 @@ def _render_market(ctx) -> None:
 
 def _plan_to_table_text(plan) -> str:
     if plan.direction == "wait":
-        return f"[yellow]观望[/yellow]\n{plan.rationale}"
+        return f"[yellow]{L('观望', 'Wait')}[/yellow]\n{plan.rationale}"
     return (
-        f"方向：[bold]{plan.direction}[/bold]\n"
-        f"入场区：{plan.entry_low:.2f} - {plan.entry_high:.2f}\n"
-        f"止损：{plan.stop_loss:.2f}\n"
-        f"止盈 1：{plan.take_profit_1:.2f}\n"
-        + (f"止盈 2：{plan.take_profit_2:.2f}\n" if plan.take_profit_2 else "")
-        + f"R:R：{plan.rr_ratio:.2f}\n\n{plan.rationale}"
+        L(f"方向：[bold]{plan.direction}[/bold]\n", f"Direction: [bold]{plan.direction}[/bold]\n")
+        + L(
+            f"入场区：{plan.entry_low:.2f} - {plan.entry_high:.2f}\n",
+            f"Entry: {plan.entry_low:.2f} - {plan.entry_high:.2f}\n",
+        )
+        + L(f"止损：{plan.stop_loss:.2f}\n", f"Stop loss: {plan.stop_loss:.2f}\n")
+        + L(f"止盈 1：{plan.take_profit_1:.2f}\n", f"TP 1: {plan.take_profit_1:.2f}\n")
+        + (
+            L(f"止盈 2：{plan.take_profit_2:.2f}\n", f"TP 2: {plan.take_profit_2:.2f}\n")
+            if plan.take_profit_2
+            else ""
+        )
+        + L(f"R:R：{plan.rr_ratio:.2f}", f"R:R: {plan.rr_ratio:.2f}")
+        + f"\n\n{plan.rationale}"
     )
 
 
@@ -141,10 +161,12 @@ def practice(
 
     # 1. 创建会话
     try:
-        with console.status(f"[bold cyan]拉取 {sym} 多周期数据..."):
+        with console.status(
+            L(f"[bold cyan]拉取 {sym} 多周期数据...", f"[bold cyan]Fetching {sym} multi-timeframe data...")
+        ):
             ctx = ts.create_session(sym, timeframe)
     except Exception as e:
-        console.print(f"[bold red]❌ 数据拉取失败：{e}[/bold red]")
+        console.print(L(f"[bold red]❌ 数据拉取失败：{e}[/bold red]", f"[bold red]❌ Data fetch failed: {e}[/bold red]"))
         raise typer.Exit(1) from e
 
     # 2. 渲染市场快照
@@ -152,7 +174,7 @@ def practice(
 
     # 3. 调用 AI
     try:
-        with console.status("[bold green]🤖 AI 分析中..."):
+        with console.status(L("[bold green]🤖 AI 分析中...", "[bold green]🤖 AI analyzing...")):
             market_dict = ctx.market.to_dict()
             market_dict["primary_timeframe"] = ctx.db_session.timeframe
             ai_response = analyze_market(
@@ -160,7 +182,7 @@ def practice(
                 indicators_snapshot=ctx.indicators,
             )
     except Exception as e:
-        console.print(f"[bold red]❌ AI 调用失败：{e}[/bold red]")
+        console.print(L(f"[bold red]❌ AI 调用失败：{e}[/bold red]", f"[bold red]❌ AI call failed: {e}[/bold red]"))
         raise typer.Exit(1) from e
 
     repo.save_ai_plan(
@@ -186,7 +208,7 @@ def practice(
     console.print(
         Panel(
             _plan_to_table_text(ai_response.plan),
-            title="🤖 AI 计划",
+            title=L("🤖 AI 计划", "🤖 AI plan"),
             border_style="green",
         )
     )
@@ -198,15 +220,22 @@ def practice(
     )
 
     console.print(
-        f"\n[bold green]✅ 会话 #{ctx.db_session.id} 已记录[/bold green]"
+        L(
+            f"\n[bold green]✅ 会话 #{ctx.db_session.id} 已记录[/bold green]",
+            f"\n[bold green]✅ Session #{ctx.db_session.id} recorded[/bold green]",
+        )
     )
     console.print(
-        f"[dim]💰 本次 AI 成本：${ai_response.cost_usd:.4f} "
-        f"({ai_response.latency_ms}ms)[/dim]"
+        L(
+            f"[dim]💰 本次 AI 成本：${ai_response.cost_usd:.4f} ({ai_response.latency_ms}ms)[/dim]",
+            f"[dim]💰 AI cost: ${ai_response.cost_usd:.4f} ({ai_response.latency_ms}ms)[/dim]",
+        )
     )
     console.print(
-        f"[dim]⏰ 请在 {verify_at:%Y-%m-%d %H:%M UTC} 后运行 "
-        f"[cyan]analyst verify[/cyan][/dim]"
+        L(
+            f"[dim]⏰ 请在 {verify_at:%Y-%m-%d %H:%M UTC} 后运行 [cyan]analyst verify[/cyan][/dim]",
+            f"[dim]⏰ Run [cyan]analyst verify[/cyan] after {verify_at:%Y-%m-%d %H:%M UTC}[/dim]",
+        )
     )
 
 
@@ -223,11 +252,14 @@ def verify(
     if session is not None:
         s = repo.get_session(session)
         if not s:
-            console.print(f"[red]会话 #{session} 不存在[/red]")
+            console.print(L(f"[red]会话 #{session} 不存在[/red]", f"[red]Session #{session} not found[/red]"))
             raise typer.Exit(1)
         if s.status != "ai_planned":
             console.print(
-                f"[yellow]会话 #{session} 状态是 {s.status}，已不需要验证[/yellow]"
+                L(
+                    f"[yellow]会话 #{session} 状态是 {s.status}，已不需要验证[/yellow]",
+                    f"[yellow]Session #{session} is {s.status}; no verification needed[/yellow]",
+                )
             )
             return
         sessions_to_verify = [s]
@@ -235,15 +267,20 @@ def verify(
         sessions_to_verify = repo.list_pending_verification()
 
     if not sessions_to_verify:
-        console.print("[dim]✨ 没有待验证的会话[/dim]")
+        console.print(L("[dim]✨ 没有待验证的会话[/dim]", "[dim]✨ No sessions pending verification[/dim]"))
         return
 
-    console.print(f"[cyan]共 {len(sessions_to_verify)} 个会话待验证[/cyan]\n")
+    console.print(
+        L(
+            f"[cyan]共 {len(sessions_to_verify)} 个会话待验证[/cyan]\n",
+            f"[cyan]{len(sessions_to_verify)} session(s) pending verification[/cyan]\n",
+        )
+    )
     for s in sessions_to_verify:
         try:
             _verify_one(s)
         except Exception as e:
-            console.print(f"[red]会话 #{s.id} 验证失败：{e}[/red]")
+            console.print(L(f"[red]会话 #{s.id} 验证失败：{e}[/red]", f"[red]Session #{s.id} verification failed: {e}[/red]"))
 
 
 def _verify_one(s) -> None:
@@ -262,17 +299,17 @@ def _verify_one(s) -> None:
     ai_plan_db = repo.get_ai_plan(s.id)
 
     if not ai_plan_db:
-        console.print(f"[yellow]会话 #{s.id} 没有 AI 计划，跳过[/yellow]")
+        console.print(L(f"[yellow]会话 #{s.id} 没有 AI 计划，跳过[/yellow]", f"[yellow]Session #{s.id} has no AI plan, skipped[/yellow]"))
         return
 
     console.print(
-        f"[cyan]验证会话 #{s.id}[/cyan] {s.symbol} {s.timeframe} "
-        f"[dim]@ {s.created_at}[/dim]"
+        L(f"[cyan]验证会话 #{s.id}[/cyan] ", f"[cyan]Verifying session #{s.id}[/cyan] ")
+        + f"{s.symbol} {s.timeframe} [dim]@ {s.created_at}[/dim]"
     )
 
     candles = fetch_future_candles(s.symbol, s.created_at, timeframe="1h")
     if not candles:
-        console.print("[yellow]  验证 K线不足，跳过[/yellow]")
+        console.print(L("[yellow]  验证 K线不足，跳过[/yellow]", "[yellow]  Not enough candles to verify, skipped[/yellow]"))
         return
 
     # 用户结果
@@ -331,12 +368,12 @@ def _verify_one(s) -> None:
     repo.update_session_status(s.id, "verified")
 
     table = Table(show_header=True, header_style="bold")
-    table.add_column("方", style="cyan")
-    table.add_column("结果")
-    table.add_column("R 倍数", justify="right")
+    table.add_column(L("方", "Side"), style="cyan")
+    table.add_column(L("结果", "Outcome"))
+    table.add_column(L("R 倍数", "R multiple"), justify="right")
 
     table.add_row("AI", ai_result.outcome.value, _fmt_r(ai_result.pnl_r))
-    table.add_row("最优参考", "-", _fmt_r(optimal.pnl_r))
+    table.add_row(L("最优参考", "Optimal ref"), "-", _fmt_r(optimal.pnl_r))
 
     console.print(table)
     console.print()
@@ -380,16 +417,16 @@ def ai_benchmark_cmd(
     days = _parse_period(period)
     r = calculate_ai_benchmark(period_days=days)
     if r.verified_count == 0:
-        console.print(f"[dim]近 {days} 天暂无已验证会话[/dim]")
+        console.print(L(f"[dim]近 {days} 天暂无已验证会话[/dim]", f"[dim]No verified sessions in the last {days} days[/dim]"))
         return
-    table = Table(title=f"📊 AI 基准（近 {days} 天 · 已验证）")
-    table.add_column("项", style="cyan")
-    table.add_column("值", justify="right")
-    table.add_row("已验证会话", str(r.verified_count))
-    table.add_row("实际触发次数", str(r.ai_triggered))
-    table.add_row("触发后胜率", f"{r.ai_win_rate:.0%}")
-    table.add_row("平均 AI R", f"{r.avg_ai_pnl_r:+.2f}")
-    table.add_row("含用户计划的会话", str(r.sessions_with_user_plan))
+    table = Table(title=L(f"📊 AI 基准（近 {days} 天 · 已验证）", f"📊 AI benchmark (last {days} days · verified)"))
+    table.add_column(L("项", "Metric"), style="cyan")
+    table.add_column(L("值", "Value"), justify="right")
+    table.add_row(L("已验证会话", "Verified sessions"), str(r.verified_count))
+    table.add_row(L("实际触发次数", "Triggered"), str(r.ai_triggered))
+    table.add_row(L("触发后胜率", "Win rate when triggered"), f"{r.ai_win_rate:.0%}")
+    table.add_row(L("平均 AI R", "Avg AI R"), f"{r.avg_ai_pnl_r:+.2f}")
+    table.add_row(L("含用户计划的会话", "Sessions with user plan"), str(r.sessions_with_user_plan))
     console.print(table)
 
 
@@ -405,15 +442,15 @@ def history(
     sessions = repo.list_sessions(limit=limit, symbol=sym)
 
     if not sessions:
-        console.print("[dim]暂无会话[/dim]")
+        console.print(L("[dim]暂无会话[/dim]", "[dim]No sessions yet[/dim]"))
         return
 
-    table = Table(title="📚 历史会话")
+    table = Table(title=L("📚 历史会话", "📚 Session history"))
     table.add_column("ID", style="cyan", no_wrap=True)
-    table.add_column("时间")
-    table.add_column("品种")
-    table.add_column("周期")
-    table.add_column("状态", style="bold")
+    table.add_column(L("时间", "Time"))
+    table.add_column(L("品种", "Symbol"))
+    table.add_column(L("周期", "Timeframe"))
+    table.add_column(L("状态", "Status"), style="bold")
 
     for s in sessions:
         status_style = {
@@ -444,7 +481,7 @@ def review(session_id: int = typer.Argument(..., help="会话 ID")):
 
     s = repo.get_session(session_id)
     if not s:
-        console.print(f"[red]会话 #{session_id} 不存在[/red]")
+        console.print(L(f"[red]会话 #{session_id} 不存在[/red]", f"[red]Session #{session_id} not found[/red]"))
         raise typer.Exit(1)
 
     ai_plan_db = repo.get_ai_plan(session_id)
@@ -453,9 +490,11 @@ def review(session_id: int = typer.Argument(..., help="会话 ID")):
     console.print(
         Panel.fit(
             f"[bold]{s.symbol} {s.timeframe}[/bold]\n"
-            f"创建：{s.created_at}\n"
-            f"状态：[bold]{s.status}[/bold]",
-            title=f"🔍 会话 #{s.id}",
+            + L(
+                f"创建：{s.created_at}\n状态：[bold]{s.status}[/bold]",
+                f"Created: {s.created_at}\nStatus: [bold]{s.status}[/bold]",
+            ),
+            title=L(f"🔍 会话 #{s.id}", f"🔍 Session #{s.id}"),
             border_style="cyan",
         )
     )
@@ -463,16 +502,16 @@ def review(session_id: int = typer.Argument(..., help="会话 ID")):
     if ai_plan_db:
         a = _row_to_plan(ai_plan_db)
         console.print(
-            Panel(_plan_to_table_text(a), title="🤖 AI 计划", border_style="green")
+            Panel(_plan_to_table_text(a), title=L("🤖 AI 计划", "🤖 AI plan"), border_style="green")
         )
 
     if verification:
-        table = Table(title="✅ 验证结果", show_header=True)
-        table.add_column("项", style="cyan")
-        table.add_column("结果")
-        table.add_column("R 倍数", justify="right")
+        table = Table(title=L("✅ 验证结果", "✅ Verification"), show_header=True)
+        table.add_column(L("项", "Side"), style="cyan")
+        table.add_column(L("结果", "Outcome"))
+        table.add_column(L("R 倍数", "R multiple"), justify="right")
         table.add_row("AI", verification.ai_outcome, _fmt_r(verification.ai_pnl_r))
-        table.add_row("最优参考", "-", _fmt_r(verification.optimal_pnl_r))
+        table.add_row(L("最优参考", "Optimal ref"), "-", _fmt_r(verification.optimal_pnl_r))
         console.print(table)
 
 
@@ -509,9 +548,9 @@ def data_status():
     from analyst.data.fetcher import get_cache
 
     cache = get_cache()
-    console.print(f"缓存目录：[cyan]{cache.directory}[/cyan]")
-    console.print(f"条目数：{len(cache)}")
-    console.print(f"占用：{cache.volume() / 1024:.1f} KB")
+    console.print(L(f"缓存目录：[cyan]{cache.directory}[/cyan]", f"Cache dir: [cyan]{cache.directory}[/cyan]"))
+    console.print(L(f"条目数：{len(cache)}", f"Entries: {len(cache)}"))
+    console.print(L(f"占用：{cache.volume() / 1024:.1f} KB", f"Size: {cache.volume() / 1024:.1f} KB"))
 
 
 @data_app.command("refresh")
@@ -520,10 +559,10 @@ def data_refresh(symbol: str = typer.Argument(...)):
     from analyst.data import fetcher
 
     sym = _normalize_symbol(symbol)
-    with console.status(f"刷新 {sym}..."):
+    with console.status(L(f"刷新 {sym}...", f"Refreshing {sym}...")):
         for tf in ["1d", "4h", "1h", "30m"]:
             fetcher.fetch_candles(sym, timeframe=tf, use_cache=False)
-    console.print(f"[green]✅ {sym} 已刷新[/green]")
+    console.print(L(f"[green]✅ {sym} 已刷新[/green]", f"[green]✅ {sym} refreshed[/green]"))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -539,7 +578,7 @@ def db_init():
     from analyst.storage.db import init_db
 
     init_db()
-    console.print("[green]✅ 数据库已初始化[/green]")
+    console.print(L("[green]✅ 数据库已初始化[/green]", "[green]✅ Database initialized[/green]"))
 
 
 @db_app.command("backup")
@@ -555,9 +594,9 @@ def db_backup(
         db_path = db_path[2:]
     try:
         shutil.copy(db_path, output)
-        console.print(f"[green]✅ 已备份到 {output}[/green]")
+        console.print(L(f"[green]✅ 已备份到 {output}[/green]", f"[green]✅ Backed up to {output}[/green]"))
     except FileNotFoundError:
-        console.print(f"[red]数据库文件不存在：{db_path}[/red]")
+        console.print(L(f"[red]数据库文件不存在：{db_path}[/red]", f"[red]Database file not found: {db_path}[/red]"))
         raise typer.Exit(1) from None
 
 
@@ -574,9 +613,9 @@ def config_show():
     from analyst.config import get_settings
 
     settings = get_settings()
-    table = Table(title="⚙️  当前配置")
-    table.add_column("键", style="cyan")
-    table.add_column("值")
+    table = Table(title=L("⚙️  当前配置", "⚙️  Current config"))
+    table.add_column(L("键", "Key"), style="cyan")
+    table.add_column(L("值", "Value"))
 
     for k, v in settings.model_dump().items():
         if "key" in k.lower() and v:
@@ -584,6 +623,23 @@ def config_show():
         table.add_row(k, str(v))
 
     console.print(table)
+
+
+@app.command("lang")
+def lang_cmd(
+    lang: Optional[str] = typer.Argument(None, help="zh / en；不填则显示当前语言"),
+):
+    """🌐 查看或设置输出语言（与 Web 页面共用）。"""
+    from analyst import i18n
+
+    if lang is None:
+        console.print(L(f"当前语言：{i18n.get_lang()}", f"Current language: {i18n.get_lang()}"))
+        return
+    if lang.strip().lower() not in i18n.SUPPORTED:
+        console.print(L(f"[red]不支持的语言 {lang}，可选：zh / en[/red]", f"[red]Unsupported language {lang}; use zh / en[/red]"))
+        raise typer.Exit(1)
+    v = i18n.set_lang(lang)
+    console.print(L(f"[green]✅ 语言已设为 {v}[/green]", f"[green]✅ Language set to {v}[/green]"))
 
 
 @config_app.command("test-llm")
@@ -601,15 +657,18 @@ def config_test_llm():
     )
     if bk and bm and getattr(settings, "llm_try_bai_after_groq", True):
         console.print(
-            f"[cyan]链路 1 b.ai:[/cyan] {settings.bai_model}（最先尝试，失败再走免费层 / 主 Provider）"
+            L(
+                f"[cyan]链路 1 b.ai:[/cyan] {settings.bai_model}（最先尝试，失败再走免费层 / 主 Provider）",
+                f"[cyan]Route 1 b.ai:[/cyan] {settings.bai_model} (tried first; falls back to free tier / main provider)",
+            )
         )
     from analyst.llm.analyst import list_free_endpoints
 
     free_eps = list_free_endpoints(settings)
     if free_eps:
         console.print(
-            "[cyan]免费层:[/cyan] "
-            + " → ".join(f"{e['name']}「{e['model']}」" for e in free_eps)
+            L("[cyan]免费层:[/cyan] ", "[cyan]Free tier:[/cyan] ")
+            + " → ".join(L(f"{e['name']}「{e['model']}」", f"{e['name']} ({e['model']})") for e in free_eps)
         )
 
     fake_market = {
@@ -638,17 +697,17 @@ def config_test_llm():
     }
 
     try:
-        with console.status("[bold green]测试调用..."):
+        with console.status(L("[bold green]测试调用...", "[bold green]Testing call...")):
             response = analyze_market(fake_market, fake_indicators)
     except Exception as e:
-        console.print(f"[bold red]❌ 失败：{e}[/bold red]")
+        console.print(L(f"[bold red]❌ 失败：{e}[/bold red]", f"[bold red]❌ Failed: {e}[/bold red]"))
         raise typer.Exit(1) from e
 
-    console.print("[bold green]✅ 连通成功[/bold green]")
-    console.print(f"  方向：{response.plan.direction}")
-    console.print(f"  延迟：{response.latency_ms} ms")
-    console.print(f"  成本：${response.cost_usd:.6f}")
-    console.print(f"  R:R：{response.plan.rr_ratio:.2f}")
+    console.print(L("[bold green]✅ 连通成功[/bold green]", "[bold green]✅ Connected[/bold green]"))
+    console.print(L(f"  方向：{response.plan.direction}", f"  Direction: {response.plan.direction}"))
+    console.print(L(f"  延迟：{response.latency_ms} ms", f"  Latency: {response.latency_ms} ms"))
+    console.print(L(f"  成本：${response.cost_usd:.6f}", f"  Cost: ${response.cost_usd:.6f}"))
+    console.print(L(f"  R:R：{response.plan.rr_ratio:.2f}", f"  R:R: {response.plan.rr_ratio:.2f}"))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -671,7 +730,9 @@ def backtest(
 
     sym = _normalize_symbol(symbol)
 
-    with console.status(f"[bold cyan]回放 {sym} {timeframe} × {bars} 根..."):
+    with console.status(
+        L(f"[bold cyan]回放 {sym} {timeframe} × {bars} 根...", f"[bold cyan]Replaying {sym} {timeframe} × {bars} bars...")
+    ):
         report = run_backtest(
             sym,
             timeframe,
@@ -686,24 +747,29 @@ def backtest(
         span = f"{report.start:%m-%d %H:%M} → {report.end:%m-%d %H:%M} UTC"
     console.print(
         Panel(
-            f"品种：[bold]{report.symbol}[/bold] · 周期：{report.timeframe} · "
-            f"共 {report.bars} 根\n{span}",
-            title="🧪 回测范围",
+            L(
+                f"品种：[bold]{report.symbol}[/bold] · 周期：{report.timeframe} · 共 {report.bars} 根\n{span}",
+                f"Symbol: [bold]{report.symbol}[/bold] · Timeframe: {report.timeframe} · {report.bars} bars\n{span}",
+            ),
+            title=L("🧪 回测范围", "🧪 Backtest range"),
             border_style="cyan",
         )
     )
 
     if rules and report.rule_stats:
         rt = Table(
-            title=f"📡 规则告警前瞻命中率（{horizon} 根内先走 ±1×ATR）"
+            title=L(
+                f"📡 规则告警前瞻命中率（{horizon} 根内先走 ±1×ATR）",
+                f"📡 Rule alert forward hit rate (first ±1×ATR move within {horizon} bars)",
+            )
         )
-        rt.add_column("规则", style="cyan")
-        rt.add_column("样本", justify="right")
-        rt.add_column("命中", justify="right")
-        rt.add_column("打脸", justify="right")
-        rt.add_column("未决", justify="right")
-        rt.add_column("命中率", justify="right")
-        rt.add_column("平均前瞻收益", justify="right")
+        rt.add_column(L("规则", "Rule"), style="cyan")
+        rt.add_column(L("样本", "Samples"), justify="right")
+        rt.add_column(L("命中", "Hits"), justify="right")
+        rt.add_column(L("打脸", "Misses"), justify="right")
+        rt.add_column(L("未决", "Flat"), justify="right")
+        rt.add_column(L("命中率", "Hit rate"), justify="right")
+        rt.add_column(L("平均前瞻收益", "Avg fwd return"), justify="right")
         for name, st in sorted(
             report.rule_stats.items(), key=lambda kv: -kv[1].win_rate
         ):
@@ -720,11 +786,20 @@ def backtest(
             )
         console.print(rt)
         console.print(
-            "[dim]命中率≈50% 说明该规则单独使用无优势，只适合当上下文参考；"
-            "样本 < 10 时结论不可靠。[/dim]"
+            L(
+                "[dim]命中率≈50% 说明该规则单独使用无优势，只适合当上下文参考；"
+                "样本 < 10 时结论不可靠。[/dim]",
+                "[dim]A ~50% hit rate means the rule has no edge on its own and is only useful as context; "
+                "results with < 10 samples are unreliable.[/dim]",
+            )
         )
     elif rules:
-        console.print("[yellow]该区间内未触发任何带方向的规则告警[/yellow]")
+        console.print(
+            L(
+                "[yellow]该区间内未触发任何带方向的规则告警[/yellow]",
+                "[yellow]No directional rule alerts fired in this range[/yellow]",
+            )
+        )
 
     if json_out:
         from pathlib import Path as _P
@@ -733,7 +808,7 @@ def backtest(
             _json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        console.print(f"[green]✅ 已保存 {json_out}[/green]")
+        console.print(L(f"[green]✅ 已保存 {json_out}[/green]", f"[green]✅ Saved {json_out}[/green]"))
 
 
 @app.command("strategies")
@@ -741,19 +816,23 @@ def strategies_list():
     """📚 列出策略库（经典组合策略 + 实时周期策略）。"""
     from analyst.compute.strategies.registry import list_strategies
 
-    t = Table(title="策略库")
+    t = Table(title=L("策略库", "Strategy library"))
     t.add_column("ID", style="cyan")
-    t.add_column("名称")
-    t.add_column("类型")
-    t.add_column("说明")
-    t.add_column("CLI 示例", style="dim")
+    t.add_column(L("名称", "Name"))
+    t.add_column(L("类型", "Type"))
+    t.add_column(L("说明", "Description"))
+    t.add_column(L("CLI 示例", "CLI example"), style="dim")
     for s in list_strategies():
-        kind = "实时" if s.kind == "realtime" else "组合回测"
+        kind = L("实时", "Realtime") if s.kind == "realtime" else L("组合回测", "Portfolio backtest")
         t.add_row(s.id, s.name, kind, s.description, s.cli or "-")
     console.print(t)
     console.print(
-        "[dim]组合策略走 backtest-classic / backtest-xs / backtest-carry；"
-        "规则命中率走 backtest；实时盯盘走 Web。[/dim]"
+        L(
+            "[dim]组合策略走 backtest-classic / backtest-xs / backtest-carry；"
+            "规则命中率走 backtest；实时盯盘走 Web。[/dim]",
+            "[dim]Portfolio strategies: backtest-classic / backtest-xs / backtest-carry; "
+            "rule hit rates: backtest; live monitoring: Web.[/dim]",
+        )
     )
 
 
@@ -761,34 +840,52 @@ def _print_robustness(bundle: dict) -> None:
     wf = bundle["walk_forward"]
     color = {"PASS": "green", "WARN": "yellow", "FAIL": "red"}.get(wf["verdict"], "yellow")
     console.print(
-        f"[bold]滚动样本外[/bold]（每窗 {wf['oos_days']} 天，步长 {wf['step_days']} 天）："
-        f"通过 {wf['n_pass']}/{wf['n_windows']}，最长连续 {wf['max_consecutive']}"
-        f"（门槛 {wf['consecutive_required']}）"
-        f" [{color}]{wf['verdict']}[/{color}]"
+        L(
+            f"[bold]滚动样本外[/bold]（每窗 {wf['oos_days']} 天，步长 {wf['step_days']} 天）："
+            f"通过 {wf['n_pass']}/{wf['n_windows']}，最长连续 {wf['max_consecutive']}"
+            f"（门槛 {wf['consecutive_required']}）",
+            f"[bold]Walk-forward OOS[/bold] ({wf['oos_days']}d windows, {wf['step_days']}d step): "
+            f"passed {wf['n_pass']}/{wf['n_windows']}, longest streak {wf['max_consecutive']}"
+            f" (need {wf['consecutive_required']})",
+        )
+        + f" [{color}]{wf['verdict']}[/{color}]"
     )
     bits = []
     for row in bundle["cost_sensitivity"]:
         bits.append(f"{row['scale']:g}× {row['total_return_pct']:+.1f}%")
-    doubled = "仍为正" if bundle["cost_2x_still_positive"] else "转负或持平"
-    console.print(f"[bold]成本敏感度[/bold]：{' · '.join(bits)}（2× {doubled}）")
+    if bundle["cost_2x_still_positive"]:
+        doubled = L("仍为正", "still positive")
+    else:
+        doubled = L("转负或持平", "flat or negative")
+    console.print(
+        L(
+            f"[bold]成本敏感度[/bold]：{' · '.join(bits)}（2× {doubled}）",
+            f"[bold]Cost sensitivity[/bold]: {' · '.join(bits)} (2× {doubled})",
+        )
+    )
     dsr = bundle["deflated_sharpe"]
     if dsr.get("dsr_prob") is None:
-        console.print(f"[bold]Deflated Sharpe[/bold]：{dsr['verdict']}")
+        console.print(L(f"[bold]Deflated Sharpe[/bold]：{dsr['verdict']}", f"[bold]Deflated Sharpe[/bold]: {dsr['verdict']}"))
     else:
         dsr_color = "green" if dsr["verdict"] == "PASS" else "red"
         console.print(
-            f"[bold]Deflated Sharpe[/bold]：概率 {dsr['dsr_prob']:.2f}"
-            f"（候选 {dsr['n_trials']}） [{dsr_color}]{dsr['verdict']}[/{dsr_color}]"
+            L(
+                f"[bold]Deflated Sharpe[/bold]：概率 {dsr['dsr_prob']:.2f}（候选 {dsr['n_trials']}）",
+                f"[bold]Deflated Sharpe[/bold]: prob {dsr['dsr_prob']:.2f} ({dsr['n_trials']} trials)",
+            )
+            + f" [{dsr_color}]{dsr['verdict']}[/{dsr_color}]"
         )
     pbo = bundle["pbo"]
     if pbo.get("pbo") is None:
-        console.print(f"[bold]PBO[/bold]：{pbo.get('reason') or pbo.get('verdict')}")
+        console.print(f"[bold]PBO[/bold]{L('：', ': ')}{pbo.get('reason') or pbo.get('verdict')}")
     else:
         pbo_color = {"PASS": "green", "WARN": "yellow"}.get(pbo["verdict"], "red")
         console.print(
-            f"[bold]PBO[/bold]：{pbo['pbo']:.2f}"
-            f"（{pbo['n_strategies']} 个参数邻域，{pbo['n_splits']} 折）"
-            f" [{pbo_color}]{pbo['verdict']}[/{pbo_color}]"
+            L(
+                f"[bold]PBO[/bold]：{pbo['pbo']:.2f}（{pbo['n_strategies']} 个参数邻域，{pbo['n_splits']} 折）",
+                f"[bold]PBO[/bold]: {pbo['pbo']:.2f} ({pbo['n_strategies']} param neighbors, {pbo['n_splits']} folds)",
+            )
+            + f" [{pbo_color}]{pbo['verdict']}[/{pbo_color}]"
         )
 
 
@@ -1032,23 +1129,31 @@ def backtest_xs(
     )
 
     t = Table(
-        title=f"🏁 横截面动量 · {len(series_map)} 币池 · "
-              f"{rep.start:%Y-%m-%d} → {rep.end:%Y-%m-%d}"
+        title=L(
+            f"🏁 横截面动量 · {len(series_map)} 币池 · "
+            f"{rep.start:%Y-%m-%d} → {rep.end:%Y-%m-%d}",
+            f"🏁 Cross-sectional momentum · {len(series_map)} coins · "
+            f"{rep.start:%Y-%m-%d} → {rep.end:%Y-%m-%d}",
+        )
     )
-    t.add_column("指标", style="cyan")
-    t.add_column("值", justify="right")
-    t.add_row("总收益（复利）", f"{rep.total_return_pct:+.1f}%")
-    t.add_row("年化 CAGR", f"{rep.cagr_pct:+.1f}%")
-    t.add_row("最大回撤", f"{rep.max_drawdown_pct:.1f}%")
-    t.add_row("夏普（年化）", f"{rep.sharpe:.2f}")
-    t.add_row("调仓次数", str(rep.rebalances))
-    t.add_row("持仓时间占比", f"{rep.exposure:.0%}")
+    t.add_column(L("指标", "Metric"), style="cyan")
+    t.add_column(L("值", "Value"), justify="right")
+    t.add_row(L("总收益（复利）", "Total return (compounded)"), f"{rep.total_return_pct:+.1f}%")
+    t.add_row(L("年化 CAGR", "CAGR"), f"{rep.cagr_pct:+.1f}%")
+    t.add_row(L("最大回撤", "Max drawdown"), f"{rep.max_drawdown_pct:.1f}%")
+    t.add_row(L("夏普（年化）", "Sharpe (ann.)"), f"{rep.sharpe:.2f}")
+    t.add_row(L("调仓次数", "Rebalances"), str(rep.rebalances))
+    t.add_row(L("持仓时间占比", "Time in market"), f"{rep.exposure:.0%}")
     if include_funding:
-        t.add_row("资金费净损益", f"{rep.funding_pnl_pct:+.2f}%")
+        t.add_row(L("资金费净损益", "Funding P&L"), f"{rep.funding_pnl_pct:+.2f}%")
     t.add_row(
-        "参数",
-        f"动量 {lookback_days}天 · top{top_n} · {rebalance_days}天调仓 · "
-        f"熊市{'做空最弱' if short_in_bear else '空仓'}",
+        L("参数", "Params"),
+        L(
+            f"动量 {lookback_days}天 · top{top_n} · {rebalance_days}天调仓 · "
+            f"熊市{'做空最弱' if short_in_bear else '空仓'}",
+            f"Momentum {lookback_days}d · top{top_n} · rebalance {rebalance_days}d · "
+            f"bear {'short weakest' if short_in_bear else 'flat'}",
+        ),
     )
     console.print(t)
 
@@ -1097,7 +1202,10 @@ def backtest_carry(
     )
 
     t = Table(
-        title=f"💰 资金费套利 · {sym} · {rep.start:%Y-%m-%d} → {rep.end:%Y-%m-%d}"
+        title=L(
+            f"💰 资金费套利 · {sym} · {rep.start:%Y-%m-%d} → {rep.end:%Y-%m-%d}",
+            f"💰 Funding carry · {sym} · {rep.start:%Y-%m-%d} → {rep.end:%Y-%m-%d}",
+        )
     )
     t.add_column("指标", style="cyan")
     t.add_column("值", justify="right")
@@ -1299,7 +1407,7 @@ def cycle_outlook(
     console.print(
         Panel(
             body,
-            title=f"🔮 周期展望 · BTC · {outlook.as_of:%Y-%m-%d}",
+            title=L(f"🔮 周期展望 · BTC · {outlook.as_of:%Y-%m-%d}", f"🔮 Cycle outlook · BTC · {outlook.as_of:%Y-%m-%d}"),
             border_style="yellow",
         )
     )
@@ -1343,11 +1451,14 @@ def cycle_status(
     btc_1d = fetch_candles_history("BTC/USDT", "1d", days=800, market="futures")
     outlook = evaluate_cycle_outlook(btc_1d)
     wcal = outlook.calendar
-    wzh = {"bull": "牛市", "bear": "熊市"}
-    wolfy_lines = (
+    wzh = {"bull": L("牛市", "Bull"), "bear": L("熊市", "Bear")}
+    wolfy_lines = L(
         f"刻舟求剑：{wzh[wcal.phase]} 第 {wcal.phase_day}/{wcal.phase_total_days} 天 · "
         f"距{wcal.next_milestone.label} {wcal.days_to_milestone} 天"
-        f"（{wcal.next_milestone.date:%Y-%m-%d}）"
+        f"（{wcal.next_milestone.date:%Y-%m-%d}）",
+        f"Calendar: {wzh[wcal.phase]} day {wcal.phase_day}/{wcal.phase_total_days} · "
+        f"{wcal.days_to_milestone} days to {wcal.next_milestone.label} "
+        f"({wcal.next_milestone.date:%Y-%m-%d})",
     )
     if outlook.alerts:
         wolfy_lines += "\n" + "\n".join(outlook.alerts[:4])
@@ -1357,30 +1468,38 @@ def cycle_status(
     cal = halving_phase(now_ts)
     reg = regime.get(now_ts, "accum")
     days_since = (now_ts - max(h for h in HALVING_DATES if h <= now_ts)).days
-    zh = {"bull": "牛市", "bear": "熊市", "accum": "筑底/中性"}
+    zh = {"bull": L("牛市", "Bull"), "bear": L("熊市", "Bear"), "accum": L("筑底/中性", "Accumulation / neutral")}
     console.print(
         Panel(
             wolfy_lines,
-            title="🔮 Wolfy 周期展望（刻舟求剑日历）",
+            title=L("🔮 Wolfy 周期展望（刻舟求剑日历）", "🔮 Wolfy cycle outlook (calendar model)"),
             border_style="yellow",
         )
     )
     console.print(
         Panel(
-            f"减半日历相位：[bold]{zh[cal]}[/bold]（距上次减半 {days_since} 天）\n"
-            f"双确认最终判定：[bold]{zh[reg]}[/bold]\n"
-            f"[dim]规则：日历+200日线双确认才算熊；熊市清多、只空 z>1.5 的反弹[/dim]",
-            title=f"🧭 cycle_switch 执行相位（BTC · {timeframe} · {now_ts:%Y-%m-%d %H:%M} UTC）",
+            L(
+                f"减半日历相位：[bold]{zh[cal]}[/bold]（距上次减半 {days_since} 天）\n"
+                f"双确认最终判定：[bold]{zh[reg]}[/bold]\n"
+                f"[dim]规则：日历+200日线双确认才算熊；熊市清多、只空 z>1.5 的反弹[/dim]",
+                f"Halving-calendar phase: [bold]{zh[cal]}[/bold] ({days_since} days since last halving)\n"
+                f"Double-confirmed regime: [bold]{zh[reg]}[/bold]\n"
+                f"[dim]Bear only if calendar + 200-day EMA agree; in bear close longs and only short z>1.5 bounces[/dim]",
+            ),
+            title=L(
+                f"🧭 cycle_switch 执行相位（BTC · {timeframe} · {now_ts:%Y-%m-%d %H:%M} UTC）",
+                f"🧭 cycle_switch execution phase (BTC · {timeframe} · {now_ts:%Y-%m-%d %H:%M} UTC)",
+            ),
             border_style="cyan",
         )
     )
 
-    t = Table(title="cycle_switch 当前目标仓位")
-    t.add_column("品种", style="cyan")
-    t.add_column("目标仓位", justify="right")
-    t.add_column("现价", justify="right")
-    t.add_column("40根高点(入场)", justify="right")
-    t.add_column("20根低点(离场)", justify="right")
+    t = Table(title=L("cycle_switch 当前目标仓位", "cycle_switch target positions"))
+    t.add_column(L("品种", "Symbol"), style="cyan")
+    t.add_column(L("目标仓位", "Target"), justify="right")
+    t.add_column(L("现价", "Price"), justify="right")
+    t.add_column(L("40根高点(入场)", "40-bar high (entry)"), justify="right")
+    t.add_column(L("20根低点(离场)", "20-bar low (exit)"), justify="right")
     t.add_column("z-score", justify="right")
     for sym in syms:
         s = fetch_candles_history(sym, timeframe, days=1825, market="futures")

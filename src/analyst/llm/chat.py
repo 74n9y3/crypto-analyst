@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from analyst.config import get_settings
+from analyst.i18n import L
 from analyst.llm.prompts import normalize_lang
 
 logger = logging.getLogger(__name__)
@@ -59,8 +60,12 @@ def _resolve_openai_client(settings):
         model = settings.llm_model
         if not api_key:
             raise RuntimeError(
-                "追问需要免费线路 key（GROQ/CEREBRAS/GEMINI/OPENROUTER/SAMBANOVA）"
-                "或 DeepSeek / OpenAI 兼容密钥（Anthropic 主线路暂不支持纯文本 chat）"
+                L(
+                    "追问需要免费线路 key（GROQ/CEREBRAS/GEMINI/OPENROUTER/SAMBANOVA）"
+                    "或 DeepSeek / OpenAI 兼容密钥（Anthropic 主线路暂不支持纯文本 chat）",
+                    "Chat needs a free-provider key (GROQ/CEREBRAS/GEMINI/OPENROUTER/SAMBANOVA) "
+                    "or a DeepSeek / OpenAI-compatible key (Anthropic does not support plain-text chat yet)",
+                )
             )
         return OpenAI(api_key=api_key, base_url=base), model, "deepseek"
 
@@ -68,7 +73,7 @@ def _resolve_openai_client(settings):
         settings.deepseek_api_key if prov == "deepseek" else settings.openai_api_key
     )
     if not api_key:
-        raise RuntimeError(f"{prov.upper()}_API_KEY 未配置")
+        raise RuntimeError(L(f"{prov.upper()}_API_KEY 未配置", f"{prov.upper()}_API_KEY is not configured"))
     base = settings.llm_base_url or DEFAULT_BASE_URLS.get(prov)
     return OpenAI(api_key=api_key, base_url=base), settings.llm_model, prov
 
@@ -182,14 +187,14 @@ def ask_monitor_question(
     timeframe: str = "4h",
     context: dict[str, Any] | None = None,
     history: list[dict[str, str]] | None = None,
-    lang: str = "zh",
+    lang: str | None = None,
 ) -> dict[str, Any]:
     """返回 {reply, model, latency_ms}。"""
     q = (question or "").strip()
     if not q:
-        raise ValueError("问题不能为空")
+        raise ValueError(L("问题不能为空", "Question cannot be empty"))
     if len(q) > 2000:
-        raise ValueError("问题过长（最多 2000 字）")
+        raise ValueError(L("问题过长（最多 2000 字）", "Question too long (max 2000 characters)"))
 
     settings = get_settings()
     system = CHAT_SYSTEM + (CHAT_SYSTEM_EN_SUFFIX if normalize_lang(lang) == "en" else "")
@@ -225,7 +230,7 @@ def ask_monitor_question(
             msg = resp.choices[0].message
             reply = (getattr(msg, "content", None) or "").strip()
             if not reply:
-                raise RuntimeError(f"{prov} 返回空回复")
+                raise RuntimeError(L(f"{prov} 返回空回复", f"{prov} returned an empty reply"))
             return {
                 "reply": reply,
                 "model": model,
@@ -239,5 +244,10 @@ def ask_monitor_question(
             logger.warning("monitor chat %s failed: %s", prov, e)
 
     if last_err is None:
-        raise RuntimeError("追问无可用 LLM 线路（请配置免费或主线路 API key）")
-    raise RuntimeError(f"追问失败: {last_err}") from last_err
+        raise RuntimeError(
+            L(
+                "追问无可用 LLM 线路（请配置免费或主线路 API key）",
+                "No LLM provider available for chat (configure a free or primary API key)",
+            )
+        )
+    raise RuntimeError(L(f"追问失败: {last_err}", f"Chat failed: {last_err}")) from last_err

@@ -18,6 +18,7 @@ import diskcache
 import requests
 
 from analyst.config import get_settings
+from analyst.i18n import L, get_lang
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def fetch_macro(ttl_seconds: int = 600) -> MacroSnapshot | None:
     缓存 10 分钟（这些数据变化非常慢）。
     """
     cache = _cache()
-    cached = cache.get("macro")
+    cached = cache.get(f"macro:{get_lang()}")
     if cached is not None:
         return cached
 
@@ -69,24 +70,24 @@ def fetch_macro(ttl_seconds: int = 600) -> MacroSnapshot | None:
         fng_label = fng["value_classification"].lower().replace(" ", "_")
 
         if fng_value <= 25:
-            fng_emoji = "😱 极度恐惧"
+            fng_emoji = L("😱 极度恐惧", "😱 Extreme fear")
         elif fng_value <= 45:
-            fng_emoji = "😟 恐惧"
+            fng_emoji = L("😟 恐惧", "😟 Fear")
         elif fng_value <= 55:
-            fng_emoji = "😐 中性"
+            fng_emoji = L("😐 中性", "😐 Neutral")
         elif fng_value <= 75:
-            fng_emoji = "🤑 贪婪"
+            fng_emoji = L("🤑 贪婪", "🤑 Greed")
         else:
-            fng_emoji = "🚨 极度贪婪"
+            fng_emoji = L("🚨 极度贪婪", "🚨 Extreme greed")
 
         # ─── 整体氛围 ───
         parts = [f"BTC.D {btc_dom:.1f}%"]
         if cap_change > 2:
-            parts.append(f"24h 总市值 +{cap_change:.1f}% 🟢")
+            parts.append(L(f"24h 总市值 +{cap_change:.1f}% 🟢", f"24h market cap +{cap_change:.1f}% 🟢"))
         elif cap_change < -2:
-            parts.append(f"24h 总市值 {cap_change:.1f}% 🔴")
+            parts.append(L(f"24h 总市值 {cap_change:.1f}% 🔴", f"24h market cap {cap_change:.1f}% 🔴"))
         else:
-            parts.append(f"24h 总市值 {cap_change:+.1f}%")
+            parts.append(L(f"24h 总市值 {cap_change:+.1f}%", f"24h market cap {cap_change:+.1f}%"))
         parts.append(fng_emoji)
         summary = " · ".join(parts)
 
@@ -101,7 +102,7 @@ def fetch_macro(ttl_seconds: int = 600) -> MacroSnapshot | None:
             summary=summary,
         )
 
-        cache.set("macro", snap, expire=ttl_seconds)
+        cache.set(f"macro:{get_lang()}", snap, expire=ttl_seconds)
         return snap
 
     except Exception as e:

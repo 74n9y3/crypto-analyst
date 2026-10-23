@@ -9,6 +9,8 @@ import httpx
 from rich.console import Console
 from rich.panel import Panel
 
+from analyst.i18n import L
+
 logger = logging.getLogger("uvicorn.error")
 console = Console()
 
@@ -16,7 +18,7 @@ console = Console()
 @dataclass
 class ConsoleNotifier:
     def send_text(self, text: str) -> None:
-        console.print(Panel(text, title="📢 规则提醒", border_style="yellow"))
+        console.print(Panel(text, title=L("📢 规则提醒", "📢 Rule alert"), border_style="yellow"))
 
 
 @dataclass
@@ -108,7 +110,7 @@ def build_default_notifier(
 
 
 def format_rule_alert_text(symbol: str, timeframe: str, alert: dict) -> str:
-    title = alert.get("title") or alert.get("rule") or "规则"
+    title = alert.get("title") or alert.get("rule") or L("规则", "Rule")
     dir_ = (alert.get("direction") or "").upper()
     rule = str(alert.get("rule") or "")
     lines = [
@@ -117,7 +119,7 @@ def format_rule_alert_text(symbol: str, timeframe: str, alert: dict) -> str:
     ]
     reasons = alert.get("reasons") or []
     if reasons:
-        lines.append("；".join(str(x) for x in reasons[:4]))
+        lines.append(L("；", "; ").join(str(x) for x in reasons[:4]))
     plan = alert.get("plan") or {}
     if plan.get("stop_loss") is not None:
         lines.append(
@@ -125,11 +127,11 @@ def format_rule_alert_text(symbol: str, timeframe: str, alert: dict) -> str:
             f"SL {plan.get('stop_loss')} TP {plan.get('take_profit_1')}"
         )
     if rule == "ai_plan":
-        lines.append("AI 盯盘点评 · 仅提醒 · 不开仓")
+        lines.append(L("AI 盯盘点评 · 仅提醒 · 不开仓", "AI monitor review · alert only · no position opened"))
     elif rule.startswith("eric_swing"):
-        lines.append("Eric 周线波段计划 · 人工执行 · 仓位按风险定")
+        lines.append(L("Eric 周线波段计划 · 人工执行 · 仓位按风险定", "Eric weekly swing plan · manual execution · size by risk"))
     else:
-        lines.append("规则提醒 only，不下单 / 非开仓信号")
+        lines.append(L("规则提醒 only，不下单 / 非开仓信号", "Rule alert only · no order / not an entry signal"))
     return "\n".join(lines)
 
 
@@ -148,29 +150,35 @@ def format_cycle_alert_text(
 
     if not isinstance(signal, CycleSwitchSignal):
         return f"cycle_switch · {symbol} {timeframe}"
-    zh = {"bull": "牛市", "bear": "熊市", "accum": "筑底"}
+    zh = {
+        "bull": L("牛市", "bull"),
+        "bear": L("熊市", "bear"),
+        "accum": L("筑底", "accumulation"),
+    }
+    flat = L("空仓", "flat")
     prev = (
-        "做多" if signal.prev_position > 0
-        else ("做空" if signal.prev_position < 0 else "空仓")
+        L("做多", "long") if signal.prev_position > 0
+        else (L("做空", "short") if signal.prev_position < 0 else flat)
     )
     now = (
-        "做多 100%" if signal.target_position > 0
+        L("做多 100%", "long 100%") if signal.target_position > 0
         else (
-            f"做空 {abs(signal.target_position):.0%}"
+            L(f"做空 {abs(signal.target_position):.0%}", f"short {abs(signal.target_position):.0%}")
             if signal.target_position < 0
-            else "空仓"
+            else flat
         )
     )
+    regime = zh.get(signal.market_regime, signal.market_regime)
+    phase = zh.get(signal.calendar_phase, signal.calendar_phase)
     lines = [
         f"🧭 cycle_switch · {symbol} {timeframe}",
     ]
     if isinstance(calendar, WolfyCalendarState):
         lines.append(format_milestone_countdown(calendar))
     lines.extend([
-        f"相位 {zh.get(signal.market_regime, signal.market_regime)} "
-        f"(日历 {zh.get(signal.calendar_phase, signal.calendar_phase)})",
-        f"仓位 {prev} → {now} · price={signal.price:.6g}",
-        "；".join(signal.reasons[:3]),
-        "周期策略提醒 only，不下单",
+        L(f"相位 {regime} (日历 {phase})", f"Regime {regime} (calendar {phase})"),
+        L(f"仓位 {prev} → {now}", f"Position {prev} → {now}") + f" · price={signal.price:.6g}",
+        L("；", "; ").join(signal.reasons[:3]),
+        L("周期策略提醒 only，不下单", "Cycle strategy alert only · no order"),
     ])
     return "\n".join(lines)

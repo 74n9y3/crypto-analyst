@@ -18,6 +18,7 @@ from typing import Awaitable, Callable
 
 from analyst.config import get_settings
 from analyst.data.news import NewsItem, fetch_news
+from analyst.i18n import L
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def keyword_fallback_classify(items: list[NewsItem]) -> list[dict]:
                 "severity": "critical",
                 "category": "keyword",
                 "affected": "",
-                "reason": "关键词命中（LLM 不可用）",
+                "reason": L("关键词命中（LLM 不可用）", "Keyword match (LLM unavailable)"),
             })
     return out
 
@@ -124,6 +125,9 @@ def classify_news(items: list[NewsItem]) -> list[dict]:
         ensure_ascii=False,
     )
     from analyst.llm.chat import _iter_chat_clients
+    from analyst.llm.prompts import language_directive
+
+    payload += language_directive()
 
     for client, model, prov in _iter_chat_clients(settings):
         try:
@@ -165,17 +169,24 @@ def classify_news(items: list[NewsItem]) -> list[dict]:
 def _format_alert(item: NewsItem, cls: dict) -> str:
     icon = "🚨" if cls["severity"] == "critical" else "⚠️"
     lines = [
-        f"{icon} 风险事件（{cls['severity'].upper()} · {cls.get('category')}）",
+        L(
+            f"{icon} 风险事件（{cls['severity'].upper()} · {cls.get('category')}）",
+            f"{icon} Risk event ({cls['severity'].upper()} · {cls.get('category')})",
+        ),
         item.title,
-        f"来源 {item.source}" + (f" · 影响 {cls['affected']}" if cls.get("affected") else ""),
+        L(f"来源 {item.source}", f"Source {item.source}")
+        + (L(f" · 影响 {cls['affected']}", f" · affects {cls['affected']}") if cls.get("affected") else ""),
     ]
     if cls.get("reason"):
-        lines.append(f"判定：{cls['reason']}")
+        lines.append(L(f"判定：{cls['reason']}", f"Verdict: {cls['reason']}"))
     if cls["severity"] == "critical":
-        lines.append("💡 提示：交易所级风险事件请评估敞口并自行决策")
+        lines.append(L(
+            "💡 提示：交易所级风险事件请评估敞口并自行决策",
+            "💡 Note: exchange-level risk event; review your exposure and decide for yourself",
+        ))
     if item.url:
         lines.append(item.url)
-    lines.append("（AI 分级仅供参考，不构成自动交易动作）")
+    lines.append(L("（AI 分级仅供参考，不构成自动交易动作）", "(AI grading is for reference only; no automatic trading action)"))
     return "\n".join(lines)
 
 

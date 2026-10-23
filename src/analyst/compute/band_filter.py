@@ -41,6 +41,7 @@ from typing import Literal
 
 from analyst.compute.indicators import ema
 from analyst.data.fetcher import CandleSeries
+from analyst.i18n import L
 
 # Eric 过滤器/波段计划只在这两个品种上完成了逆向标注对照与 2015–2026 回测；
 # 其他品种（BNB +5%/50%、SOL -48%/29%）证伪或未验证，信号只作参考。
@@ -55,7 +56,13 @@ def eric_symbol_validated(symbol: str | None) -> bool:
     return base in ERIC_VALIDATED_SYMBOLS
 
 
-ERIC_UNVALIDATED_NOTE = "⚠️ Eric 过滤器仅在 BTC/ETH 上验证有效（BNB/SOL 回测证伪），本品种信号仅供参考"
+def eric_unvalidated_note() -> str:
+    return L(
+        "⚠️ Eric 过滤器仅在 BTC/ETH 上验证有效（BNB/SOL 回测证伪），本品种信号仅供参考",
+        "⚠️ The Eric filter is only validated on BTC/ETH (BNB/SOL backtests failed); signals on this symbol are for reference only",
+    )
+
+
 # Eric 分析只在日线、周线上运行（4h 超卖无统计优势；1h 及以下只是噪音）
 ERIC_TIMEFRAMES = frozenset({"1d", "1w"})
 

@@ -4,6 +4,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from analyst.i18n import L
 from analyst.stats.progress import ProgressReport
 from analyst.stats.weakness import WeaknessPattern
 
@@ -16,39 +17,47 @@ def render_progress(report: ProgressReport, console: Console | None = None) -> N
     if report.total_sessions == 0:
         console.print(
             Panel(
-                "暂无已验证会话。\n"
-                "请先用 [cyan]analyst practice <symbol>[/cyan] 创建会话，"
-                "并在到期后用 [cyan]analyst verify[/cyan] 验证。",
-                title="📈 分析进度",
+                L(
+                    "暂无已验证会话。\n"
+                    "请先用 [cyan]analyst practice <symbol>[/cyan] 创建会话，"
+                    "并在到期后用 [cyan]analyst verify[/cyan] 验证。",
+                    "No verified sessions yet.\n"
+                    "Create one with [cyan]analyst practice <symbol>[/cyan], "
+                    "then verify it with [cyan]analyst verify[/cyan] once it is due.",
+                ),
+                title=L("📈 分析进度", "📈 Progress"),
                 border_style="dim",
             )
         )
         return
 
     table = Table(
-        title=f"📈 最近 {report.period_days} 天分析摘要",
+        title=L(
+            f"📈 最近 {report.period_days} 天分析摘要",
+            f"📈 Summary of the last {report.period_days} days",
+        ),
         show_header=False,
         show_lines=True,
     )
-    table.add_column("指标", style="cyan", no_wrap=True)
-    table.add_column("数值", style="bold")
+    table.add_column(L("指标", "Metric"), style="cyan", no_wrap=True)
+    table.add_column(L("数值", "Value"), style="bold")
 
-    table.add_row("总会话数", f"{report.total_sessions}")
-    table.add_row("实际触发", f"{report.completed}")
-    table.add_row("胜率", _fmt_pct(report.win_rate))
-    table.add_row("平均 R 倍数", _fmt_r(report.avg_user_pnl_r))
-    table.add_row("计划 R:R", f"{report.avg_rr:.2f}")
-    table.add_row("与 AI 一致率", _fmt_pct(report.vs_ai_agreement_rate))
-    table.add_row("跑赢 AI 比例", _fmt_pct(report.vs_ai_outperform_rate))
-    table.add_row("vs AI 收益差", _fmt_r(report.vs_ai_pnl_diff))
-    table.add_row("最优捕获率", _fmt_pct(report.vs_optimal_capture_rate))
+    table.add_row(L("总会话数", "Total sessions"), f"{report.total_sessions}")
+    table.add_row(L("实际触发", "Triggered"), f"{report.completed}")
+    table.add_row(L("胜率", "Win rate"), _fmt_pct(report.win_rate))
+    table.add_row(L("平均 R 倍数", "Avg R multiple"), _fmt_r(report.avg_user_pnl_r))
+    table.add_row(L("计划 R:R", "Planned R:R"), f"{report.avg_rr:.2f}")
+    table.add_row(L("与 AI 一致率", "Agreement with AI"), _fmt_pct(report.vs_ai_agreement_rate))
+    table.add_row(L("跑赢 AI 比例", "Beat AI rate"), _fmt_pct(report.vs_ai_outperform_rate))
+    table.add_row(L("vs AI 收益差", "R diff vs AI"), _fmt_r(report.vs_ai_pnl_diff))
+    table.add_row(L("最优捕获率", "Optimal capture rate"), _fmt_pct(report.vs_optimal_capture_rate))
 
     console.print(table)
 
     if report.weekly_win_rates:
         weekly = " → ".join(f"{w:.0%}" for w in report.weekly_win_rates)
         console.print(
-            Panel(weekly, title="📊 周度胜率（旧 → 新）", border_style="blue")
+            Panel(weekly, title=L("📊 周度胜率（旧 → 新）", "📊 Weekly win rate (old → new)"), border_style="blue")
         )
 
 
@@ -62,19 +71,22 @@ def render_weakness(
     if not patterns:
         console.print(
             Panel(
-                "尚无足够数据分析弱点。至少需要 5 次已验证会话才能给出有意义的归纳。",
-                title="🎯 弱点分析",
+                L(
+                    "尚无足够数据分析弱点。至少需要 5 次已验证会话才能给出有意义的归纳。",
+                    "Not enough data to analyze weaknesses yet. At least 5 verified sessions are needed.",
+                ),
+                title=L("🎯 弱点分析", "🎯 Weaknesses"),
                 border_style="dim",
             )
         )
         return
 
-    table = Table(title="🎯 你最常犯的错", show_lines=True)
+    table = Table(title=L("🎯 你最常犯的错", "🎯 Your most common mistakes"), show_lines=True)
     table.add_column("#", no_wrap=True, style="dim")
-    table.add_column("弱点", style="red")
-    table.add_column("次数", justify="right", style="yellow")
-    table.add_column("占比", justify="right")
-    table.add_column("改进建议", style="green")
+    table.add_column(L("弱点", "Weakness"), style="red")
+    table.add_column(L("次数", "Count"), justify="right", style="yellow")
+    table.add_column(L("占比", "Share"), justify="right")
+    table.add_column(L("改进建议", "Suggestion"), style="green")
 
     for i, p in enumerate(patterns, 1):
         table.add_row(

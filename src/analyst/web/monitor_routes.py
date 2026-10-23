@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from analyst.config import get_settings
 from analyst.data.fetcher import list_usdt_perp_symbols
+from analyst.i18n import L
 from analyst.llm.prompts import normalize_lang
 from analyst.monitor.hub import get_monitor_hub
 
@@ -24,7 +25,7 @@ class MonitorAnalyzeRequest(BaseModel):
     timeframe: str = "4h"
     verify_after_hours: int | None = None
     market: str = Field(default="futures")
-    lang: str = "zh"
+    lang: str | None = None
 
 
 def _chart_timeframes() -> list[str]:
@@ -162,22 +163,27 @@ async def monitor_daemon_sync(
     if not get_settings().monitor_always_on:
         raise HTTPException(
             400,
-            "未开启常驻盯盘：请在 .env 设置 MONITOR_ALWAYS_ON=true 后重启一次 Web 服务",
+            L(
+                "未开启常驻盯盘：请在 .env 设置 MONITOR_ALWAYS_ON=true 后重启一次 Web 服务",
+                "Always-on monitor is disabled: set MONITOR_ALWAYS_ON=true in .env and restart the web server",
+            ),
         )
     hub = get_monitor_hub()
     syms = [_norm_symbol(x) for x in symbols.split(",") if x.strip()]
     if not syms:
-        raise HTTPException(400, "symbols 不能为空")
+        raise HTTPException(400, L("symbols 不能为空", "symbols cannot be empty"))
     hub.save_daemon_state(syms)
     info = await hub.start_always_on_workers()
-    info["message"] = (
-        f"已热更新：{len(info.get('symbols') or [])} 品种 · "
-        f"运行 {len(info.get('running') or [])} workers"
-        + (
-            f" · 停止 {len(info.get('stopped') or [])} 个旧流"
-            if info.get("stopped")
-            else ""
-        )
+    n_sym = len(info.get("symbols") or [])
+    n_run = len(info.get("running") or [])
+    n_stop = len(info.get("stopped") or [])
+    info["message"] = L(
+        f"已热更新：{n_sym} 品种 · 运行 {n_run} workers",
+        f"Hot-reloaded: {n_sym} symbols · {n_run} workers running",
+    ) + (
+        L(f" · 停止 {n_stop} 个旧流", f" · stopped {n_stop} old streams")
+        if info.get("stopped")
+        else ""
     )
     return info
 
@@ -212,7 +218,7 @@ class MonitorChatRequest(BaseModel):
     session_id: int | None = None
     context: dict | None = None
     history: list[dict] | None = None
-    lang: str = "zh"
+    lang: str | None = None
 
 
 @router.post("/api/monitor/alerts/demo")
@@ -227,7 +233,7 @@ async def monitor_demo_alert(req: DemoAlertRequest):
             market="futures",
         )
     except Exception as e:
-        raise HTTPException(500, f"模拟告警失败：{e}") from e
+        raise HTTPException(500, L(f"模拟告警失败：{e}", f"Demo alert failed: {e}")) from e
     return {"ok": True, "alert": alert}
 
 
@@ -274,7 +280,7 @@ def monitor_chat(req: MonitorChatRequest):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     except Exception as e:
-        raise HTTPException(500, f"追问失败：{e}") from e
+        raise HTTPException(500, L(f"追问失败：{e}", f"Chat failed: {e}")) from e
 
     # 有会话 id 时落库，便于历史回看
     if req.session_id:
@@ -299,7 +305,7 @@ def monitor_chat(req: MonitorChatRequest):
         except ValueError as e:
             raise HTTPException(404, str(e)) from e
         except Exception as e:
-            raise HTTPException(500, f"保存对话失败：{e}") from e
+            raise HTTPException(500, L(f"保存对话失败：{e}", f"Failed to save chat: {e}")) from e
     return out
 
 
@@ -310,7 +316,7 @@ def monitor_chat_history(session_id: int):
 
     s = repo.get_session(session_id)
     if not s:
-        raise HTTPException(404, f"会话 #{session_id} 不存在")
+        raise HTTPException(404, L(f"会话 #{session_id} 不存在", f"Session #{session_id} not found"))
     return {
         "session_id": session_id,
         "symbol": s.symbol,
@@ -326,7 +332,7 @@ def monitor_analyze(req: MonitorAnalyzeRequest, background_tasks: BackgroundTask
 
     symbol = _norm_symbol(req.symbol)
     if not symbol:
-        raise HTTPException(400, "请提供交易对")
+        raise HTTPException(400, L("请提供交易对", "Please provide a symbol"))
 
     tf = _map_analysis_timeframe(req.timeframe)
     try:
@@ -337,11 +343,11 @@ def monitor_analyze(req: MonitorAnalyzeRequest, background_tasks: BackgroundTask
             market="futures",
         )
     except Exception as e:
-        raise HTTPException(500, f"分析失败：{e}") from e
+        raise HTTPException(500, L(f"分析失败：{e}", f"Analysis failed: {e}")) from e
 
     sid = dto.get("id")
     if sid is None:
-        raise HTTPException(500, "会话创建失败：无 id")
+        raise HTTPException(500, L("会话创建失败：无 id", "Session creation failed: no id"))
     background_tasks.add_task(run_ai_job, sid, normalize_lang(req.lang))
     dto["analysis_timeframe"] = tf
     dto["chart_timeframe"] = req.timeframe
@@ -362,7 +368,7 @@ def cycle_timeline(days: int = Query(800, ge=200, le=2000)):
 
     series = fetch_candles_history("BTC/USDT", "1d", days=days, market="futures")
     if len(series.candles) < 30:
-        raise HTTPException(400, "历史数据不足")
+        raise HTTPException(400, L("历史数据不足", "Not enough history"))
     outlook = evaluate_cycle_outlook(series)
     attach_wave_index(outlook)
     ts = outlook.as_of
@@ -393,9 +399,12 @@ def cycle_timeline(days: int = Query(800, ge=200, le=2000)):
         regime = "accum"
     price = closes[-1]
     legs = {
-        "bear": "熊市腿：清多、只空半仓（z>1.5 反弹空 + 唐奇安破位空）",
-        "bull": "牛市腿：唐奇安 40/20 只多",
-        "accum": "筑底：唐奇安只多（允许多、不做空）",
+        "bear": L(
+            "熊市腿：清多、只空半仓（z>1.5 反弹空 + 唐奇安破位空）",
+            "Bear leg: close longs, half-size shorts only (z>1.5 bounce short + Donchian breakdown short)",
+        ),
+        "bull": L("牛市腿：唐奇安 40/20 只多", "Bull leg: Donchian 40/20, long only"),
+        "accum": L("筑底：唐奇安只多（允许多、不做空）", "Accumulation: Donchian long only (longs allowed, no shorts)"),
     }
     payload["regime"] = {
         "regime": regime,
@@ -415,14 +424,17 @@ def strategies_catalog():
     """策略库目录（实时 + 组合）。"""
     from analyst.compute.strategies.registry import list_strategies
 
-    kind_zh = {"realtime": "实时盯盘", "portfolio": "组合回测"}
+    kind_labels = {
+        "realtime": L("实时盯盘", "Live monitor"),
+        "portfolio": L("组合回测", "Portfolio"),
+    }
     return {
         "strategies": [
             {
                 "id": s.id,
                 "name": s.name,
                 "kind": s.kind,
-                "kind_label": kind_zh.get(s.kind, s.kind),
+                "kind_label": kind_labels.get(s.kind, s.kind),
                 "description": s.description,
                 "cli": s.cli,
                 "module": s.module,
@@ -488,7 +500,7 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
     from analyst.data.fetcher import fetch_candles_history
 
     if req.strategy not in STRATEGIES:
-        raise HTTPException(400, f"未知策略：{req.strategy}")
+        raise HTTPException(400, L(f"未知策略：{req.strategy}", f"Unknown strategy: {req.strategy}"))
 
     sym = _norm_symbol(req.symbol)
     tf = req.timeframe.strip().lower()
@@ -506,7 +518,7 @@ async def backtest_classic_api(req: ClassicBacktestRequest):
     )
     candles = series.candles
     if len(candles) < 300:
-        raise HTTPException(400, f"历史数据不足（{len(candles)} 根）")
+        raise HTTPException(400, L(f"历史数据不足（{len(candles)} 根）", f"Not enough history ({len(candles)} bars)"))
     data_check = await asyncio.to_thread(
         record_history, candles, symbol=sym, timeframe=tf, market="futures"
     )
@@ -656,7 +668,7 @@ async def monitor_digest(refresh: bool = Query(default=False)):
     try:
         out = await asyncio.to_thread(compose_daily_digest)
     except Exception as e:
-        raise HTTPException(500, f"日报生成失败：{e}") from e
+        raise HTTPException(500, L(f"日报生成失败：{e}", f"Digest generation failed: {e}")) from e
     return {"digest": out}
 
 
@@ -677,7 +689,7 @@ async def spot_radar_scan():
     try:
         return await publish_scan(hub._notify_telegram_text, hub.publish_spot_alerts)
     except Exception as exc:
-        raise HTTPException(500, f"现货扫描失败：{exc}") from exc
+        raise HTTPException(500, L(f"现货扫描失败：{exc}", f"Spot scan failed: {exc}")) from exc
 
 
 @router.get("/api/monitor/news-events")
@@ -706,9 +718,9 @@ async def monitor_research_ideas(refresh: bool = Query(default=False)):
     try:
         out = await asyncio.to_thread(compose_research_ideas)
     except Exception as e:
-        raise HTTPException(500, f"研究假设生成失败：{e}") from e
+        raise HTTPException(500, L(f"研究假设生成失败：{e}", f"Research ideas generation failed: {e}")) from e
     if not out.get("text"):
-        raise HTTPException(502, out.get("error") or "无可用 LLM 线路")
+        raise HTTPException(502, out.get("error") or L("无可用 LLM 线路", "No LLM provider available"))
     return {"research": out}
 
 
@@ -748,7 +760,7 @@ def paper_summary(journal: int = Query(default=100, ge=1, le=500), closed: int =
         "symbols": symbols,
         "marks": {k: v for k, v in marks.items() if k in symbols or k in broker.state["positions"] or k in broker.state["pending"]},
         "state_path": str(broker.path),
-        "strategy": "强势盘回踩 0.618 低多",
+        "strategy": L("强势盘回踩 0.618 低多", "Strong-trend pullback to 0.618, buy the dip"),
         "report": rep,
     }
 
@@ -795,7 +807,7 @@ async def patch_price_alert(alert_id: str, body: PriceAlertPatch):
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     alert = hub.price_alert_book().update(alert_id, patch)
     if alert is None:
-        raise HTTPException(status_code=404, detail="告警不存在")
+        raise HTTPException(status_code=404, detail=L("告警不存在", "Alert not found"))
     await hub.ensure_price_alert_streams()
     return alert.to_public()
 
@@ -804,6 +816,6 @@ async def patch_price_alert(alert_id: str, body: PriceAlertPatch):
 async def delete_price_alert(alert_id: str):
     hub = get_monitor_hub()
     if not hub.price_alert_book().delete(alert_id):
-        raise HTTPException(status_code=404, detail="告警不存在")
+        raise HTTPException(status_code=404, detail=L("告警不存在", "Alert not found"))
     await hub.ensure_price_alert_streams()
     return {"ok": True}

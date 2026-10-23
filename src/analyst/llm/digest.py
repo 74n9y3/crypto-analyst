@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from analyst.config import get_settings
+from analyst.i18n import L
+from analyst.llm.prompts import language_directive
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,10 @@ def build_digest_facts() -> dict[str, Any]:
                     }
             if ratios:
                 facts["relative_strength"] = {
-                    "note": f"vs {ema_days}日EMA；above=资金外溢山寨，below=BTC独强",
+                    "note": L(
+                        f"vs {ema_days}日EMA；above=资金外溢山寨，below=BTC独强",
+                        f"vs {ema_days}d EMA; above=money rotating into alts, below=BTC leading",
+                    ),
                     "pairs": ratios,
                 }
     except Exception as e:
@@ -161,27 +166,37 @@ def build_digest_facts() -> dict[str, Any]:
 def _template_digest(facts: dict[str, Any]) -> str:
     """LLM 不可用时的确定性模板（日报绝不缺席）。"""
     lines = [
-        f"📋 盯盘日报 {facts.get('as_of_utc', '')} UTC",
+        L(f"📋 盯盘日报 {facts.get('as_of_utc', '')} UTC", f"📋 Daily monitor digest {facts.get('as_of_utc', '')} UTC"),
     ]
     m = facts.get("market") or {}
     if m:
-        zh = {"bull": "牛市", "bear": "熊市", "accum": "筑底"}
+        names = {
+            "bull": L("牛市", "Bull"),
+            "bear": L("熊市", "Bear"),
+            "accum": L("筑底", "Accumulation"),
+        }
         dev = m.get("btc_vs_ema200d_pct")
         dev_s = f"{dev:+.1f}%" if isinstance(dev, (int, float)) else "-"
+        phase = names.get(m.get("regime"), m.get("regime"))
         lines.append(
-            f"相位：{zh.get(m.get('regime'), m.get('regime'))}"
-            f" · BTC {m.get('btc_price')}（距200日线 {dev_s}）"
+            L(
+                f"相位：{phase} · BTC {m.get('btc_price')}（距200日线 {dev_s}）",
+                f"Phase: {phase} · BTC {m.get('btc_price')} ({dev_s} vs 200d EMA)",
+            )
         )
     rs = (facts.get("relative_strength") or {}).get("pairs") or {}
     if rs:
-        zh = {"above": "山寨强", "below": "BTC强"}
+        names = {"above": L("山寨强", "alts stronger"), "below": L("BTC强", "BTC stronger")}
         lines.append(
-            "相对强弱：" + "；".join(
-                f"{k} {zh.get(v['state'], v['state'])}（{v['vs_ema_pct']:+.1f}%）"
+            L("相对强弱：", "Relative strength: ") + L("；", "; ").join(
+                L(
+                    f"{k} {names.get(v['state'], v['state'])}（{v['vs_ema_pct']:+.1f}%）",
+                    f"{k} {names.get(v['state'], v['state'])} ({v['vs_ema_pct']:+.1f}%)",
+                )
                 for k, v in rs.items()
             )
         )
-    lines.append("（模板版：LLM 线路不可用）")
+    lines.append(L("（模板版：LLM 线路不可用）", "(Template version: no LLM provider available)"))
     return "\n".join(lines)
 
 
@@ -189,7 +204,7 @@ def compose_daily_digest(facts: dict[str, Any] | None = None) -> dict[str, Any]:
     """生成日报文本。返回 {text, model, source}。"""
     facts = facts or build_digest_facts()
     settings = get_settings()
-    payload = json.dumps(facts, ensure_ascii=False, default=str)
+    payload = json.dumps(facts, ensure_ascii=False, default=str) + language_directive()
 
     from analyst.llm.chat import _iter_chat_clients
 
@@ -257,7 +272,7 @@ def compose_research_ideas() -> dict[str, Any]:
         {"system_facts": facts, "falsified_ideas": FALSIFIED_IDEAS},
         ensure_ascii=False,
         default=str,
-    )
+    ) + language_directive()
 
     from analyst.llm.chat import _iter_chat_clients
 
@@ -286,4 +301,4 @@ def compose_research_ideas() -> dict[str, Any]:
                 return out
         except Exception as e:
             logger.warning("research LLM %s 失败：%s", prov, e)
-    return {"text": "", "source": "none", "error": "无可用 LLM 线路"}
+    return {"text": "", "source": "none", "error": L("无可用 LLM 线路", "No LLM provider available")}

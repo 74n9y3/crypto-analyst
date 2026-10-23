@@ -2,14 +2,6 @@
 
 **English** | [中文](README.zh-CN.md)
 
-A locally run crypto market monitor and analysis tool. Data comes from Binance public market feeds (the web UI is fixed to **USDⓈ-M perpetuals**; Spot Radar reads spot separately). Rules are evaluated on candle close or on the mark price, optionally handed to an LLM for commentary, and pushed to the page or Telegram.
-
-**Alerts only, no real orders.** Paper trading matches locally on the mark price to validate the "buy dips in strong markets" plan; it never connects to a trading API.
-
-Top bar: **Monitor** → **Cycle** → **Schedule** → **Spot Radar** → **Strategies** → **Backtest** → **Paper Trading** → **AI Assistant**. On mobile browsers you can "Add to Home Screen" (PWA).
-
-**Interface language:** the UI supports Simplified Chinese and English. The first visit follows the browser language; the `EN` / `中文` button at the top right switches it, and the choice is saved in the browser. Manual AI analysis and follow-up chat answer in the current UI language. Backend-generated text (rule alert details, Telegram pushes, daily digest, news grading, Spot Radar descriptions) is still in Chinese.
-
 <div align="center">
 <h3>☕ Buy me a coffee</h3>
 <p>This project is free. If it ever helped you watch the market, tips in <strong>USDT</strong> on the matching network are welcome.<br/>
@@ -19,13 +11,21 @@ Top bar: **Monitor** → **Cycle** → **Schedule** → **Spot Radar** → **Str
   <img alt="Solana USDT" src="https://img.shields.io/badge/Solana-USDT-9945FF?style=for-the-badge&logo=solana&logoColor=white" />
   <img alt="Tron USDT" src="https://img.shields.io/badge/Tron-USDT%20TRC--20-FF060A?style=for-the-badge&logo=tron&logoColor=white" />
 </p>
+<table>
+  <tr><th align="left">Network</th><th align="left">Address</th></tr>
+  <tr><td><img alt="BSC" src="https://img.shields.io/badge/BSC-F3BA2F?style=flat-square&logo=binance&logoColor=white" /> <strong>USDT · BEP-20</strong></td><td><code>0x6E7359A42C466893E9A835fD6aFdb82E0D1Ed32d</code></td></tr>
+  <tr><td><img alt="Solana" src="https://img.shields.io/badge/Solana-9945FF?style=flat-square&logo=solana&logoColor=white" /> <strong>USDT</strong></td><td><code>Hm7f6wGdvcmLmbcXV7sdLYGJKBdwGoFrJTZPzeN8dpan</code></td></tr>
+  <tr><td><img alt="Tron" src="https://img.shields.io/badge/Tron-FF060A?style=flat-square&logo=tron&logoColor=white" /> <strong>USDT · TRC-20</strong></td><td><code>TGNrpZBqD8jnfNCb7B9W93qMmVHycoFsKJ</code></td></tr>
+</table>
 </div>
 
-| Network | Address |
-|:-----|:---------|
-| ![BSC](https://img.shields.io/badge/BSC-F3BA2F?style=flat-square&logo=binance&logoColor=white) **USDT · BEP-20** | `0x6E7359A42C466893E9A835fD6aFdb82E0D1Ed32d` |
-| ![Solana](https://img.shields.io/badge/Solana-9945FF?style=flat-square&logo=solana&logoColor=white) **USDT** | `Hm7f6wGdvcmLmbcXV7sdLYGJKBdwGoFrJTZPzeN8dpan` |
-| ![Tron](https://img.shields.io/badge/Tron-FF060A?style=flat-square&logo=tron&logoColor=white) **USDT · TRC-20** | `TGNrpZBqD8jnfNCb7B9W93qMmVHycoFsKJ` |
+A locally run crypto market monitor and analysis tool. Data comes from Binance public market feeds (the web UI is fixed to **USDⓈ-M perpetuals**; Spot Radar reads spot separately). Rules are evaluated on candle close or on the mark price, optionally handed to an LLM for commentary, and pushed to the page or Telegram.
+
+**Alerts only, no real orders.** Paper trading matches locally on the mark price to validate the "buy dips in strong markets" plan; it never connects to a trading API.
+
+Top bar: **Monitor** → **Cycle** → **Schedule** → **Spot Radar** → **Strategies** → **Backtest** → **Paper Trading** → **AI Assistant**. On mobile browsers you can "Add to Home Screen" (PWA).
+
+**Language:** Simplified Chinese and English. The `EN` / `中文` button at the top right switches the whole app, not just the page: the choice is saved on the server (`.cache/data/ui_settings.json`), and everything the backend produces follows it — AI analysis and chat, rule alerts, key-level playbooks, Telegram pushes, daily digest, news grading, Spot Radar, paper trading, Binance Square posts and CLI output. On first run it follows the browser language; `analyst lang en` / `analyst lang zh` switches it from the terminal. Text already generated (stored AI sessions, past alerts) stays in the language it was written in.
 
 <p align="center">
   <img src="docs/images/web-dashboard.png" alt="Web monitor: candles, key levels and AI analysis" width="900" />
@@ -455,6 +455,7 @@ Running `analyst` with no arguments lists the commands.
 | `analyst square-post [--publish --text '...']` | Preview or actually publish a Square note |
 | `analyst strategies` | Strategy catalog |
 | `analyst config show` / `config test-llm` | Print config (keys masked) / test the LLM |
+| `analyst lang [zh\|en]` | Show or set the global output language |
 | `analyst db init` / `db backup` | Create the database / back up sqlite |
 | `analyst data status` / `data refresh BTC` | Cache usage / force-refresh all timeframes for a symbol |
 
@@ -476,6 +477,7 @@ Running `analyst` with no arguments lists the commands.
 | `.cache/data/news_events.json` / `news_sentinel_seen.json` | News grading results and seen-item dedup |
 | `.cache/data/square_regime_cooldown.json` | Square posting cooldown |
 | `.cache/data/eric_swing_state.json` | Eric swing plan state |
+| `.cache/data/ui_settings.json` | Global output language |
 | `.cache/data/` | Other REST short caches, safe to delete |
 | `.env` / `.venv/` / `.logs/` | Keys, virtual environment, logs (gitignored) |
 
@@ -520,7 +522,8 @@ Common APIs:
 | GET/POST | `/api/price-alerts` | Price alerts |
 | GET | `/api/monitor/digest` `/api/monitor/research-ideas` `/api/monitor/news-events` | Digest, ideas, news. Add `?refresh=1` to regenerate the first two |
 | POST | `/api/backtest/classic` | Same portfolio backtest as the Backtest page |
-| POST | `/api/monitor/analyze` `/api/monitor/chat` | Manual AI analysis / follow-up chat; body field `lang` (`zh` / `en`) controls the answer language |
+| POST | `/api/monitor/analyze` `/api/monitor/chat` | Manual AI analysis / follow-up chat; body field `lang` (`zh` / `en`) overrides the answer language, otherwise the global language is used |
+| GET/POST | `/api/settings/lang` | Read / set the global output language (`{"lang": "en"}`) |
 | WS | `/api/monitor/ws` | Live candles and alerts |
 
 ---

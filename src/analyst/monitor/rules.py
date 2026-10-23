@@ -15,6 +15,7 @@ from analyst.compute.plan import generate_baseline_plan
 from analyst.compute.structure import detect_structure
 from analyst.compute.volume import analyze_volume
 from analyst.data.fetcher import Candle, CandleSeries
+from analyst.i18n import L, is_en
 
 try:
     from analyst.compute.swing_levels import SwingLevels
@@ -189,31 +190,33 @@ def apply_confluence(events: list[RuleEvent]) -> None:
         group = [e for e in events if e.direction == side]
         if len(group) < 2:
             continue
-        note = f"同向共振 ×{len(group)}"
+        note = L(f"同向共振 ×{len(group)}", f"Same-side confluence ×{len(group)}")
         for e in group:
             e.strength = min(0.95, e.strength + 0.08)
             if note not in e.reasons:
                 e.reasons.append(note)
 
 
-_REGIME_FLAG_LABELS: tuple[tuple[str, str], ...] = (
-    ("below_waist", "腰斩线附近，穷寇莫追"),
-    ("second_break", "二次突破（无假突破）"),
-    ("sub4h_pullback_fake_short", "4h 以下回踩诱空"),
-    ("accel_2d", "2日线加速"),
-    ("golden_3d", "3日金叉"),
-    ("golden_5d", "5日金叉"),
-    ("htf_ltf_resonance", "大小周期共振，可市价冲"),
-    ("macd_8h_decel", "8h MACD 归零减速"),
-    ("macd_12h_decel", "12h MACD 归零减速"),
-    ("weekly_macd_zero", "周线 MACD 归零，大回调将尽"),
-    ("wick_hold", "虚破仍站稳，可头仓"),
-    ("hollow_daily", "日线空心阳加速"),
+_REGIME_FLAG_LABELS: tuple[tuple[str, str, str], ...] = (
+    ("below_waist", "腰斩线附近，穷寇莫追", "Near the halfway line, don't chase the short"),
+    ("second_break", "二次突破（无假突破）", "Second breakout (no fakeout)"),
+    ("sub4h_pullback_fake_short", "4h 以下回踩诱空", "Sub-4h pullback is a bear trap"),
+    ("accel_2d", "2日线加速", "2D acceleration"),
+    ("golden_3d", "3日金叉", "3D golden cross"),
+    ("golden_5d", "5日金叉", "5D golden cross"),
+    ("htf_ltf_resonance", "大小周期共振，可市价冲", "HTF/LTF aligned, market entry OK"),
+    ("macd_8h_decel", "8h MACD 归零减速", "8h MACD back to zero, decelerating"),
+    ("macd_12h_decel", "12h MACD 归零减速", "12h MACD back to zero, decelerating"),
+    ("weekly_macd_zero", "周线 MACD 归零，大回调将尽", "Weekly MACD back to zero, major pullback ending"),
+    ("wick_hold", "虚破仍站稳，可头仓", "Wick below held, starter position OK"),
+    ("hollow_daily", "日线空心阳加速", "Daily hollow bullish candle, accelerating"),
 )
+
+_REGIME_TITLE_EN = {"strong_trend": "Strong", "range": "Range", "weak_trend": "Weak"}
 
 
 def _regime_active_flags(reg: "MarketRegime") -> list[str]:
-    return [key for key, _ in _REGIME_FLAG_LABELS if bool(getattr(reg, key, False))]
+    return [key for key, _, _ in _REGIME_FLAG_LABELS if bool(getattr(reg, key, False))]
 
 
 def _regime_rule_events(
@@ -251,14 +254,17 @@ def _regime_rule_events(
         events.append(
             RuleEvent(
                 rule="market_regime",
-                title=f"三盘 → {reg.regime_zh}",
+                title=L(
+                    f"三盘 → {reg.regime_zh}",
+                    f"Regime → {_REGIME_TITLE_EN.get(reg.regime, reg.regime)}",
+                ),
                 direction=direction,
                 strength=0.72,
                 price=price,
                 reasons=[
                     x
                     for x in (
-                        f"方向 {reg.trade_side}",
+                        L(f"方向 {reg.trade_side}", f"Side {reg.trade_side}"),
                         reg.playbook_line,
                         (reg.summary_line or "")[:140],
                     )
@@ -272,12 +278,12 @@ def _regime_rule_events(
     appeared = [flag for flag in new_flags if flag not in prev_flags]
     if appeared:
         labels = [
-            label for key, label in _REGIME_FLAG_LABELS if key in appeared
+            L(zh, en) for key, zh, en in _REGIME_FLAG_LABELS if key in appeared
         ]
         events.append(
             RuleEvent(
                 rule="playbook_setup",
-                title="打法提示",
+                title=L("打法提示", "Playbook hint"),
                 direction=direction,
                 strength=0.7,
                 price=price,
@@ -341,14 +347,21 @@ def evaluate_closed_bar_rules(
                 events.append(
                     RuleEvent(
                         rule="macd_cross",
-                        title="MACD 金叉" if long else "MACD 死叉",
+                        title=(
+                            L("MACD 金叉", "MACD golden cross")
+                            if long
+                            else L("MACD 死叉", "MACD death cross")
+                        ),
                         direction=direction,
                         strength=0.7,
                         price=price,
                         reasons=[
-                            f"DIF/DEA 交叉={cross}",
+                            L(f"DIF/DEA 交叉={cross}", f"DIF/DEA cross={cross}"),
                             f"histogram={ind.macd.histogram:.6g}",
-                            f"零轴{'之上' if ind.macd.above_zero else '之下'}",
+                            L(
+                                f"零轴{'之上' if ind.macd.above_zero else '之下'}",
+                                f"{'Above' if ind.macd.above_zero else 'Below'} zero line",
+                            ),
                             f"ADX={adx:.1f}",
                         ],
                         marker_time=t,
@@ -366,13 +379,17 @@ def evaluate_closed_bar_rules(
                 events.append(
                     RuleEvent(
                         rule="ema_stack",
-                        title="EMA 多头排列" if stack == "bull" else "EMA 空头排列",
+                        title=(
+                            L("EMA 多头排列", "EMA bullish stack")
+                            if stack == "bull"
+                            else L("EMA 空头排列", "EMA bearish stack")
+                        ),
                         direction=direction,
                         strength=0.65,
                         price=price,
                         reasons=[
                             f"EMA7/30/52 = {ind.ema.ema7:.6g}/{ind.ema.ema30:.6g}/{ind.ema.ema52:.6g}",
-                            f"由 {prev} → {stack}",
+                            L(f"由 {prev} → {stack}", f"From {prev} → {stack}"),
                             f"ADX={adx:.1f}",
                         ],
                         marker_time=t,
@@ -398,13 +415,19 @@ def evaluate_closed_bar_rules(
                 events.append(
                     RuleEvent(
                         rule="boll_break",
-                        title="收盘突破布林上轨",
+                        title=L("收盘突破布林上轨", "Closed above upper Bollinger band"),
                         direction="long",
                         strength=0.6,
                         price=price,
                         reasons=[
-                            f"上轨 {b.upper:.6g} · 带宽 {b.width:.4g}",
-                            f"量比 {vol.volume_ratio:.2f}×（≥{cfg.boll_min_vol_ratio}）",
+                            L(
+                                f"上轨 {b.upper:.6g} · 带宽 {b.width:.4g}",
+                                f"Upper {b.upper:.6g} · width {b.width:.4g}",
+                            ),
+                            L(
+                                f"量比 {vol.volume_ratio:.2f}×（≥{cfg.boll_min_vol_ratio}）",
+                                f"Volume ratio {vol.volume_ratio:.2f}× (≥{cfg.boll_min_vol_ratio})",
+                            ),
                             f"ADX={adx:.1f}",
                         ],
                         break_level=b.upper,
@@ -417,13 +440,19 @@ def evaluate_closed_bar_rules(
                 events.append(
                     RuleEvent(
                         rule="boll_break",
-                        title="收盘跌破布林下轨",
+                        title=L("收盘跌破布林下轨", "Closed below lower Bollinger band"),
                         direction="short",
                         strength=0.6,
                         price=price,
                         reasons=[
-                            f"下轨 {b.lower:.6g} · 带宽 {b.width:.4g}",
-                            f"量比 {vol.volume_ratio:.2f}×（≥{cfg.boll_min_vol_ratio}）",
+                            L(
+                                f"下轨 {b.lower:.6g} · 带宽 {b.width:.4g}",
+                                f"Lower {b.lower:.6g} · width {b.width:.4g}",
+                            ),
+                            L(
+                                f"量比 {vol.volume_ratio:.2f}×（≥{cfg.boll_min_vol_ratio}）",
+                                f"Volume ratio {vol.volume_ratio:.2f}× (≥{cfg.boll_min_vol_ratio})",
+                            ),
                             f"ADX={adx:.1f}",
                         ],
                         break_level=b.lower,
@@ -440,26 +469,35 @@ def evaluate_closed_bar_rules(
         body = abs(last.close - last.open)
         spike = vol.volume_ratio >= cfg.volume_spike_ratio
         big_body = body >= atr * cfg.volume_min_body_atr
-        diverge = ("背离" in sig) or ("恐慌" in sig)
+        # 与 analyze_volume 量价配合同口径（近 3 根价/量方向）
+        ref = series.candles[-3]
+        px_chg, vol_chg = last.close - ref.close, last.volume - ref.volume
+        top_div = px_chg > 0 and vol_chg < 0
+        panic = px_chg < 0 and vol_chg > 0
+        diverge = top_div or panic
         # 必须放量；纯背离但无量不再报（回测确认为噪音）
         if spike and (big_body or diverge):
             tag = f"{t}:{vol.volume_ratio:.1f}:{sig[:12]}"
             if state.get("volume_tag") != tag:
                 # 方向看本根实体，而非相邻收盘差（震荡里后者频繁翻面）
                 direction = "long" if last.close >= last.open else "short"
-                if "背离" in sig or "出货" in sig:
+                if top_div:
                     direction = "short" if last.close >= last.open else "long"
                 events.append(
                     RuleEvent(
                         rule="volume",
-                        title="放量异动",
+                        title=L("放量异动", "Volume spike"),
                         direction=direction,
                         strength=min(0.9, 0.5 + vol.volume_ratio / 10),
                         price=price,
                         reasons=[
                             sig,
-                            f"量比 {vol.volume_ratio:.2f}× · 实体 {body / atr:.2f}×ATR"
-                            f" · OBV {vol.obv_trend}",
+                            L(
+                                f"量比 {vol.volume_ratio:.2f}× · 实体 {body / atr:.2f}×ATR"
+                                f" · OBV {vol.obv_trend}",
+                                f"Volume ratio {vol.volume_ratio:.2f}× · body {body / atr:.2f}×ATR"
+                                f" · OBV {vol.obv_trend}",
+                            ),
                         ],
                         marker_time=t,
                     )
@@ -486,21 +524,27 @@ def evaluate_closed_bar_rules(
             cooled = t - last_bar >= cfg.cvd_cooldown_bars * _bar_span_sec(series)
             diverge: tuple[str, str] | None = None
             if cur_close > prior_hi and cur_cvd < cvd_hi:
-                diverge = ("short", "价创新高但 CVD 未新高：主动买盘未跟随（顶背离）")
+                diverge = ("short", L(
+                    "价创新高但 CVD 未新高：主动买盘未跟随（顶背离）",
+                    "Price made a new high but CVD did not: buyers did not follow (bearish divergence)",
+                ))
             elif cur_close < prior_lo and cur_cvd > cvd_lo:
-                diverge = ("long", "价创新低但 CVD 未新低：主动卖压未跟随（底背离）")
+                diverge = ("long", L(
+                    "价创新低但 CVD 未新低：主动卖压未跟随（底背离）",
+                    "Price made a new low but CVD did not: sellers did not follow (bullish divergence)",
+                ))
             if diverge and cooled:
                 direction, why = diverge
                 events.append(
                     RuleEvent(
                         rule="cvd_divergence",
-                        title="CVD 背离",
+                        title=L("CVD 背离", "CVD divergence"),
                         direction=direction,
                         strength=0.7,
                         price=price,
                         reasons=[
                             why,
-                            f"窗口={cfg.cvd_lookback} 根 · CVD={cur_cvd:,.0f}",
+                            L(f"窗口={cfg.cvd_lookback} 根 · CVD={cur_cvd:,.0f}", f"Window={cfg.cvd_lookback} bars · CVD={cur_cvd:,.0f}"),
                         ],
                         marker_time=t,
                     )
@@ -515,7 +559,7 @@ def evaluate_closed_bar_rules(
             events.append(
                 RuleEvent(
                     rule="structure_flip",
-                    title="结构转多" if trend == "up" else "结构转空",
+                    title=L("结构转多", "Structure turned bullish") if trend == "up" else L("结构转空", "Structure turned bearish"),
                     direction="long" if trend == "up" else "short",
                     strength=0.72,
                     price=price,
@@ -555,14 +599,18 @@ def evaluate_closed_bar_rules(
             events.append(
                 RuleEvent(
                     rule="structure_touch",
-                    title="触及支撑" if kind == "support" else "触及阻力",
+                    title=L("触及支撑", "Touched support") if kind == "support" else L("触及阻力", "Touched resistance"),
                     direction="long" if kind == "support" else "short",
                     strength=0.68,
                     price=price,
                     reasons=[
-                        f"{kind} @ {lvl:.6g} · 收盘守住",
-                        f"容差 ±{touch_tol:.6g}（{cfg.structure_touch_atr_mult}×ATR）"
-                        f" · 冷却 {cfg.touch_cooldown_bars} 根",
+                        L(f"{kind} @ {lvl:.6g} · 收盘守住", f"{kind} @ {lvl:.6g} · close held"),
+                        L(
+                            f"容差 ±{touch_tol:.6g}（{cfg.structure_touch_atr_mult}×ATR）"
+                            f" · 冷却 {cfg.touch_cooldown_bars} 根",
+                            f"Tolerance ±{touch_tol:.6g} ({cfg.structure_touch_atr_mult}×ATR)"
+                            f" · cooldown {cfg.touch_cooldown_bars} bars",
+                        ),
                     ],
                     break_level=lvl,
                     marker_time=t,
@@ -586,13 +634,13 @@ def evaluate_closed_bar_rules(
             events.append(
                 RuleEvent(
                     rule="fib_zone",
-                    title="进入 Fib 0.5–0.618 区",
+                    title=L("进入 Fib 0.5–0.618 区", "Entered Fib 0.5–0.618 zone"),
                     direction=direction,
                     strength=0.66,
                     price=price,
                     reasons=[
-                        f"区城 {lo:.6g}–{hi:.6g}",
-                        f"结构 {structure.trend} · 0.786={fib.retr_786:.6g}",
+                        L(f"区城 {lo:.6g}–{hi:.6g}", f"Zone {lo:.6g}–{hi:.6g}"),
+                        L(f"结构 {structure.trend} · 0.786={fib.retr_786:.6g}", f"Structure {structure.trend} · 0.786={fib.retr_786:.6g}"),
                     ],
                     marker_time=t,
                 )
@@ -609,7 +657,7 @@ def evaluate_closed_bar_rules(
             events.append(
                 RuleEvent(
                     rule="baseline_plan",
-                    title=f"规则基线 → {plan.direction.upper()}",
+                    title=L(f"规则基线 → {plan.direction.upper()}", f"Rule baseline → {plan.direction.upper()}"),
                     direction=plan.direction,
                     strength=0.64,
                     price=price,
@@ -717,7 +765,23 @@ def _eric_rule_events(
         # mtf 方向看 reasons / buff_tags
         if sig.kind == "mtf_align":
             direction = "short" if any("超买" in t for t in sig.buff_tags) else "long"
-            title = "Eric 多周期超买共振" if direction == "short" else "Eric 多周期超卖共振"
+            title = (
+                L("Eric 多周期超买共振", "Eric multi-timeframe overbought confluence")
+                if direction == "short"
+                else L("Eric 多周期超卖共振", "Eric multi-timeframe oversold confluence")
+            )
+        else:
+            title = L(title, {
+                "oversold": "Eric oversold (bounce)",
+                "overbought": "Eric overbought (fade / take profit)",
+                "rebound_long": "Eric Buff rebound",
+                "fade_short": "Eric Buff short",
+                "bull_div": "Eric bullish divergence",
+                "bear_div": "Eric bearish divergence",
+                "ema_pullback": "Eric EMA pullback + oversold",
+                "ema_reject": "Eric EMA reject + overbought",
+                "mtf_align": "Eric multi-timeframe confluence",
+            }.get(sig.kind, title))
         last = cooldown.get(sig.kind)
         if last is not None and marker_time - last < cool_sec:
             continue
@@ -731,7 +795,10 @@ def _eric_rule_events(
                 "buff_tags": list(sig.buff_tags),
                 "target": sig.target,
                 "stop_hint": sig.stop_hint,
-                "source": "CycleStudies Buff/EMA/MTF + 波段过滤器近似 Stoch(HLC3,14,5)−50",
+                "source": L(
+                    "CycleStudies Buff/EMA/MTF + 波段过滤器近似 Stoch(HLC3,14,5)−50",
+                    "CycleStudies Buff/EMA/MTF + band-filter approx Stoch(HLC3,14,5)−50",
+                ),
             }
         }
         events.append(
@@ -785,13 +852,13 @@ def evaluate_premium_rules(
                 events.append(
                     RuleEvent(
                         rule="funding_extreme",
-                        title="资金费率极端",
+                        title=L("资金费率极端", "Extreme funding rate"),
                         direction=side,
                         strength=0.7,
                         price=price,
                         reasons=[
-                            f"funding={fr_pct:+.4f}%/8h（阈值 ±{cfg.funding_extreme_pct}%）",
-                            "正费率→多头拥挤偏防追多；负费率→空头拥挤偏防追空",
+                            L(f"funding={fr_pct:+.4f}%/8h（阈值 ±{cfg.funding_extreme_pct}%）", f"funding={fr_pct:+.4f}%/8h (threshold ±{cfg.funding_extreme_pct}%)"),
+                            L("正费率→多头拥挤偏防追多；负费率→空头拥挤偏防追空", "Positive funding → crowded longs, don't chase; negative → crowded shorts, don't chase shorts"),
                         ],
                         marker_time=now,
                     )
@@ -807,12 +874,12 @@ def evaluate_premium_rules(
                 events.append(
                     RuleEvent(
                         rule="premium_extreme",
-                        title="期现溢价极端",
+                        title=L("期现溢价极端", "Extreme basis premium"),
                         direction=side,
                         strength=0.65,
                         price=price,
                         reasons=[
-                            f"溢价 {pp:+.4f}%（阈值 ±{cfg.premium_extreme_pct}%）",
+                            L(f"溢价 {pp:+.4f}%（阈值 ±{cfg.premium_extreme_pct}%）", f"Premium {pp:+.4f}% (threshold ±{cfg.premium_extreme_pct}%)"),
                             f"mark={premium.get('mark_price')} index={premium.get('index_price')}",
                         ],
                         marker_time=now,
@@ -851,28 +918,41 @@ def evaluate_oi_rules(
     if not (strong_oi and strong_px):
         return events, state
 
-    kind: tuple[str, str, str] | None = None
+    kind: tuple[str, str, str, str] | None = None
     if price_chg_pct_4h < 0 and oi_chg_pct_4h > 0:
-        kind = ("short", "价跌 + OI 增", "新空主动进场，下跌有燃料（偏空延续）")
+        kind = (
+            "short",
+            "价跌 + OI 增",
+            L("价跌 + OI 增", "price down + OI up"),
+            L("新空主动进场，下跌有燃料（偏空延续）", "New shorts entering; downside has fuel"),
+        )
     elif price_chg_pct_4h > 0 and oi_chg_pct_4h < 0:
-        kind = ("short", "价涨 + OI 降", "空头回补推涨、缺新多接力（防追多）")
+        kind = (
+            "short",
+            "价涨 + OI 降",
+            L("价涨 + OI 降", "price up + OI down"),
+            L("空头回补推涨、缺新多接力（防追多）", "Short covering lift; no new longs to follow"),
+        )
     if kind is None:
         return events, state
 
-    direction, label, why = kind
-    key = f"oi:{bucket}:{label}"
+    direction, key_label, label, why = kind
+    key = f"oi:{bucket}:{key_label}"
     if state.get("oi_key") == key:
         return events, state
     reasons = [
-        f"{label}：4h 价 {price_chg_pct_4h:+.2f}% · OI {oi_chg_pct_4h:+.2f}%",
+        L(
+            f"{label}：4h 价 {price_chg_pct_4h:+.2f}% · OI {oi_chg_pct_4h:+.2f}%",
+            f"{label}: 4h price {price_chg_pct_4h:+.2f}% · OI {oi_chg_pct_4h:+.2f}%",
+        ),
         why,
     ]
     if long_short_ratio:
-        reasons.append(f"大户多空比 {long_short_ratio:.2f}")
+        reasons.append(L(f"大户多空比 {long_short_ratio:.2f}", f"Top-trader long/short ratio {long_short_ratio:.2f}"))
     events.append(
         RuleEvent(
             rule="oi_divergence",
-            title=f"OI 背离（{label}）",
+            title=L(f"OI 背离（{label}）", f"OI divergence ({label})"),
             direction=direction,
             strength=0.65,
             price=price,

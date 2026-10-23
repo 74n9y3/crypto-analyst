@@ -8,7 +8,7 @@
 
 顶栏：**盯盘** → **周期** → **日程** → **现货雷达** → **策略库** → **回测** → **纸面交易** → **AI 助手**。手机浏览器可「添加到主屏幕」（PWA）。
 
-**界面语言：** 支持简体中文与英文。首次打开跟随浏览器语言，右上角 `EN` / `中文` 按钮切换，选择保存在浏览器里。手动 AI 分析与追问会用当前界面语言回答；后端生成的文字（规则告警详情、Telegram 推送、日报、新闻分级、现货雷达描述）仍是中文。
+**语言：** 支持简体中文与英文。右上角 `EN` / `中文` 按钮切换的是整个应用，不只是页面：选择保存在服务端（`.cache/data/ui_settings.json`），后端产出的所有文字都跟着变——AI 分析与追问、规则告警、关键位打法、Telegram 推送、日报、新闻分级、现货雷达、纸面交易、币安广场帖子和 CLI 输出。首次运行跟随浏览器语言；终端里可用 `analyst lang en` / `analyst lang zh` 切换。已经生成的内容（库里的 AI 会话、历史告警）保持当时的语言。
 
 <div align="center">
 <h3>☕ 请我一杯咖啡</h3>
@@ -455,6 +455,7 @@ Web「回测」页与 `backtest-classic` 同源。可选策略：`cycle_switch`�
 | `analyst square-post [--publish --text '...']` | 预览或真发广场短评 |
 | `analyst strategies` | 策略目录 |
 | `analyst config show` / `config test-llm` | 打印配置（密钥打码）/ 测 LLM |
+| `analyst lang [zh\|en]` | 查看 / 设置全局输出语言 |
 | `analyst db init` / `db backup` | 建库 / 备份 sqlite |
 | `analyst data status` / `data refresh BTC` | 缓存占用 / 强制刷新该品种各周期 |
 
@@ -476,6 +477,7 @@ Web「回测」页与 `backtest-classic` 同源。可选策略：`cycle_switch`�
 | `.cache/data/news_events.json` / `news_sentinel_seen.json` | 新闻分级结果与已读去重 |
 | `.cache/data/square_regime_cooldown.json` | 广场发帖冷却 |
 | `.cache/data/eric_swing_state.json` | Eric 波段计划状态 |
+| `.cache/data/ui_settings.json` | 全局输出语言 |
 | `.cache/data/` | 其余 REST 短缓存，可删 |
 | `.env` / `.venv/` / `.logs/` | 密钥、虚拟环境、日志（已 gitignore） |
 
@@ -520,7 +522,8 @@ crypto-analyst/
 | GET/POST | `/api/price-alerts` | 价格告警 |
 | GET | `/api/monitor/digest` `/api/monitor/research-ideas` `/api/monitor/news-events` | 日报、假设、新闻。加 `?refresh=1` 重新生成前两者 |
 | POST | `/api/backtest/classic` | 与回测页相同的组合回测 |
-| POST | `/api/monitor/analyze` `/api/monitor/chat` | 手动 AI 分析 / 追问；body 字段 `lang`（`zh` / `en`）决定回答语言 |
+| POST | `/api/monitor/analyze` `/api/monitor/chat` | 手动 AI 分析 / 追问；body 字段 `lang`（`zh` / `en`）可覆盖回答语言，不传则跟随全局语言 |
+| GET/POST | `/api/settings/lang` | 读取 / 设置全局输出语言（`{"lang": "en"}`） |
 | WS | `/api/monitor/ws` | 实时 K 线与告警 |
 
 ---

@@ -19,6 +19,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from analyst.config import Settings, get_settings
+from analyst.i18n import L, is_en
 
 logger = logging.getLogger("analyst.monitor.spot_radar")
 DUBAI = ZoneInfo("Asia/Dubai")
@@ -353,13 +354,13 @@ class MarketClient:
         payload = self._get("/api/v3/exchangeInfo")
         symbols = payload.get("symbols")
         if not isinstance(symbols, list):
-            raise MarketDataError("交易对列表格式异常")
+            raise MarketDataError(L("交易对列表格式异常", "Unexpected symbol list format"))
         return symbols
 
     def ticker_24h(self) -> list[dict]:
         payload = self._get("/api/v3/ticker/24hr")
         if not isinstance(payload, list):
-            raise MarketDataError("24小时行情格式异常")
+            raise MarketDataError(L("24小时行情格式异常", "Unexpected 24h ticker format"))
         return payload
 
     def klines(self, symbol: str, interval: str, limit: int) -> list[Candle]:
@@ -368,7 +369,7 @@ class MarketClient:
             {"symbol": symbol, "interval": interval, "limit": limit},
         )
         if not isinstance(payload, list):
-            raise MarketDataError(f"{symbol} K线格式异常")
+            raise MarketDataError(L(f"{symbol} K线格式异常", f"{symbol} unexpected kline format"))
         candles: list[Candle] = []
         for row in payload:
             if not isinstance(row, list) or len(row) < 8:
@@ -403,17 +404,17 @@ class MarketClient:
                 if exc.code in (418, 429, 500, 503) and attempt < 3:
                     time.sleep(1.2 * (attempt + 1))
                     continue
-                raise MarketDataError(f"行情请求失败: HTTP {exc.code}") from exc
+                raise MarketDataError(L(f"行情请求失败: HTTP {exc.code}", f"Market data request failed: HTTP {exc.code}")) from exc
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
                 last_error = exc
                 if attempt < 3:
                     time.sleep(1.2 * (attempt + 1))
                     continue
-                raise MarketDataError(f"行情请求失败: {exc}") from exc
+                raise MarketDataError(L(f"行情请求失败: {exc}", f"Market data request failed: {exc}")) from exc
             if isinstance(payload, dict) and "code" in payload and "msg" in payload:
                 raise MarketDataError(f"{payload['code']} {payload['msg']}")
             return payload
-        raise MarketDataError(f"行情请求失败: {last_error}")
+        raise MarketDataError(L(f"行情请求失败: {last_error}", f"Market data request failed: {last_error}"))
 
 
 class CooldownStore:
@@ -456,6 +457,14 @@ def format_price(price: float) -> str:
 
 
 def format_usdt(amount: float) -> str:
+    if is_en():
+        if amount >= 1e9:
+            return f"{amount / 1e9:.2f}B"
+        if amount >= 1e6:
+            return f"{amount / 1e6:.2f}M"
+        if amount >= 1e4:
+            return f"{amount / 1e3:.0f}K"
+        return f"{amount:.0f}"
     if amount >= 1e8:
         return f"{amount / 1e8:.2f} 亿"
     if amount >= 1e4:
@@ -589,11 +598,11 @@ def scan(
         majors=majors,
     )
     if not watch:
-        raise MarketDataError("没有筛出符合成交额条件的现货交易对")
+        raise MarketDataError(L("没有筛出符合成交额条件的现货交易对", "No spot pairs passed the volume filter"))
 
     loaded, errors = _load_rows(client, watch, moment)
     if not loaded:
-        raise MarketDataError("K线全部读取失败")
+        raise MarketDataError(L("K线全部读取失败", "All kline requests failed"))
 
     books = []
     for symbol, last_price, quote_volume, change_pct, hourly, quarter in loaded:
@@ -640,12 +649,16 @@ def scan(
                     symbol=symbol,
                     rule=RULE_SIGNAL,
                     direction="up",
-                    title="现货信号",
-                    detail=(
+                    title=L("现货信号", "Spot signal"),
+                    detail=L(
                         f"4小时 {item['ret_4h']:+.2%}，成交额前{config.top_n}里第{rank}，"
                         f"现价 {format_price(price)} 高于{config.sma_fast}小时均线 "
                         f"{format_price(item['sma20'] or 0)}，"
-                        f"24小时成交额 {format_usdt(item['quote_volume'])} USDT"
+                        f"24小时成交额 {format_usdt(item['quote_volume'])} USDT",
+                        f"4h {item['ret_4h']:+.2%}, #{rank} of top {config.top_n} by volume, "
+                        f"price {format_price(price)} above {config.sma_fast}h MA "
+                        f"{format_price(item['sma20'] or 0)}, "
+                        f"24h volume {format_usdt(item['quote_volume'])} USDT",
                     ),
                     price=price,
                 )
@@ -662,8 +675,11 @@ def scan(
                     symbol=symbol,
                     rule=RULE_IMPULSE,
                     direction=direction,
-                    title="急涨" if direction == "up" else "急跌",
-                    detail=f"最近一根已收盘15分钟K线 {move:+.2%}，现价 {format_price(price)}",
+                    title=L("急涨", "Spike up") if direction == "up" else L("急跌", "Spike down"),
+                    detail=L(
+                        f"最近一根已收盘15分钟K线 {move:+.2%}，现价 {format_price(price)}",
+                        f"Last closed 15m candle {move:+.2%}, price {format_price(price)}",
+                    ),
                     price=price,
                 )
             )
@@ -676,10 +692,16 @@ def scan(
                     symbol=symbol,
                     rule=RULE_RANGE,
                     direction=direction,
-                    title="突破24小时高点" if direction == "up" else "跌破24小时低点",
-                    detail=(
+                    title=(
+                        L("突破24小时高点", "Broke 24h high")
+                        if direction == "up"
+                        else L("跌破24小时低点", "Broke 24h low")
+                    ),
+                    detail=L(
                         f"现价 {format_price(price)}，前24根小时线"
-                        f"{'高点' if direction == 'up' else '低点'} {format_price(level)}"
+                        f"{'高点' if direction == 'up' else '低点'} {format_price(level)}",
+                        f"Price {format_price(price)}, prior 24 hourly candles' "
+                        f"{'high' if direction == 'up' else 'low'} {format_price(level)}",
                     ),
                     price=price,
                 )
@@ -698,10 +720,12 @@ def scan(
                     symbol=symbol,
                     rule=RULE_VOLUME,
                     direction=direction,
-                    title="放量上涨" if direction == "up" else "放量下跌",
-                    detail=(
+                    title=L("放量上涨", "Rally on volume") if direction == "up" else L("放量下跌", "Drop on volume"),
+                    detail=L(
                         f"上一小时成交额是近7个同一UTC小时均量的 {ratio:.1f} 倍，"
-                        f"该小时 {change:+.2%}，现价 {format_price(price)}"
+                        f"该小时 {change:+.2%}，现价 {format_price(price)}",
+                        f"Last hour's volume is {ratio:.1f}x the average of the same UTC hour over the past 7 days, "
+                        f"hour {change:+.2%}, price {format_price(price)}",
                     ),
                     price=price,
                 )
@@ -714,11 +738,14 @@ def scan(
                     symbol=symbol,
                     rule=RULE_MA,
                     direction=crossed,
-                    title="均线转强" if crossed == "up" else "均线转弱",
-                    detail=(
+                    title=L("均线转强", "MA turned bullish") if crossed == "up" else L("均线转弱", "MA turned bearish"),
+                    detail=L(
                         f"1小时收盘穿过{config.sma_fast}均线，并且"
                         f"{'站上' if crossed == 'up' else '跌到'}{config.sma_slow}均线"
-                        f"{'上方' if crossed == 'up' else '下方'}，现价 {format_price(price)}"
+                        f"{'上方' if crossed == 'up' else '下方'}，现价 {format_price(price)}",
+                        f"1h close crossed the {config.sma_fast} MA and is "
+                        f"{'above' if crossed == 'up' else 'below'} the {config.sma_slow} MA, "
+                        f"price {format_price(price)}",
                     ),
                     price=price,
                 )
@@ -760,13 +787,13 @@ def take_fresh(alerts: list[Alert], config: RadarConfig, *, now: float | None = 
 
 
 def format_telegram(alerts: list[dict[str, Any]]) -> str:
-    lines = [f"现货雷达 · {len(alerts)} 条"]
+    lines = [L(f"现货雷达 · {len(alerts)} 条", f"Spot radar · {len(alerts)} alerts")]
     for alert in alerts[:8]:
         lines.append(f"{alert['symbol']} {alert['title']}")
         lines.append(alert["detail"])
     hidden = len(alerts) - 8
     if hidden > 0:
-        lines.append(f"另有 {hidden} 条，见页面「现货雷达」")
+        lines.append(L(f"另有 {hidden} 条，见页面「现货雷达」", f"{hidden} more, see the Spot radar page"))
     return "\n".join(lines)
 
 
@@ -795,17 +822,20 @@ def daily_level_row(symbol: str, candles: list[Candle]) -> dict[str, Any] | None
 
 
 def format_brief_text(day_label: str, rows: list[dict[str, Any]], leaders: list[dict[str, Any]]) -> str:
-    lines = [f"现货简报 · {day_label}"]
+    lines = [L(f"现货简报 · {day_label}", f"Spot brief · {day_label}")]
     for row in rows:
-        lines.append(
-            f"{row['pair']} 昨收 {format_price(row['close'])}，日内 {row['change']:+.2%}"
-        )
-        lines.append(
-            f"昨天高点 {format_price(row['high'])}，低点 {format_price(row['low'])}"
-        )
-        lines.append(
-            f"今天盯住：上破 {format_price(row['high'])}，下破 {format_price(row['low'])}"
-        )
+        lines.append(L(
+            f"{row['pair']} 昨收 {format_price(row['close'])}，日内 {row['change']:+.2%}",
+            f"{row['pair']} prev close {format_price(row['close'])}, day {row['change']:+.2%}",
+        ))
+        lines.append(L(
+            f"昨天高点 {format_price(row['high'])}，低点 {format_price(row['low'])}",
+            f"Yesterday high {format_price(row['high'])}, low {format_price(row['low'])}",
+        ))
+        lines.append(L(
+            f"今天盯住：上破 {format_price(row['high'])}，下破 {format_price(row['low'])}",
+            f"Watch today: break above {format_price(row['high'])}, break below {format_price(row['low'])}",
+        ))
     bits = []
     for item in leaders[:3]:
         ret = item.get("ret_4h")
@@ -814,7 +844,7 @@ def format_brief_text(day_label: str, rows: list[dict[str, Any]], leaders: list[
         name = str(item.get("symbol") or "").removesuffix("USDT")
         bits.append(f"{name} {ret:+.2%}")
     if bits:
-        lines.append("4小时靠前：" + "，".join(bits))
+        lines.append(L("4小时靠前：", "4h leaders: ") + L("，", ", ").join(bits))
     return "\n".join(lines)
 
 

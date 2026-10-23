@@ -24,6 +24,7 @@ from typing import Any
 from analyst.compute.swing_levels import SwingLevels
 from analyst.compute.market_regime import MarketRegime
 from analyst.data.fetcher import Candle, CandleSeries
+from analyst.i18n import L
 
 MAKER_FEE = 0.0002
 TAKER_FEE = 0.0005
@@ -132,9 +133,15 @@ def build_plan(
         created_at=now,
         expires_at=now + timedelta(seconds=bar_seconds * cfg.order_ttl_bars),
         reasons=[
-            f"{reg.regime_zh}·{reg.trade_side}；回踩位 {entry:.6g}（{'回踩0.618' if entry == reg.pullback_618 else '近支撑'}）",
-            f"止损 {stop:.6g}（{dist*100:.1f}%）· 一半止盈 {tp1:.6g}（RR {(tp1-entry)/(entry-stop):.1f}）",
-            "成交后止损上移成本；余仓 4h 收盘破 BOLL 中轨离场",
+            L(
+                f"{reg.regime_zh}·{reg.trade_side}；回踩位 {entry:.6g}（{'回踩0.618' if entry == reg.pullback_618 else '近支撑'}）",
+                f"{reg.regime_zh}·{reg.trade_side}; pullback {entry:.6g} ({'0.618 pullback' if entry == reg.pullback_618 else 'near support'})",
+            ),
+            L(
+                f"止损 {stop:.6g}（{dist*100:.1f}%）· 一半止盈 {tp1:.6g}（RR {(tp1-entry)/(entry-stop):.1f}）",
+                f"Stop {stop:.6g} ({dist*100:.1f}%) · half TP {tp1:.6g} (RR {(tp1-entry)/(entry-stop):.1f})",
+            ),
+            L("成交后止损上移成本；余仓 4h 收盘破 BOLL 中轨离场", "After fill, stop to breakeven; remainder exits on a 4h close through the BOLL mid"),
         ],
         regime=reg.regime,
         ref_price=price,

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from analyst.compute.fibonacci import FibLevels
 from analyst.compute.structure import Structure
+from analyst.i18n import L
 
 try:
     from analyst.compute.swing_levels import SwingLevels
@@ -89,10 +90,13 @@ def generate_baseline_plan(
 
     horizon_note = ""
     if swing is not None and not swing.htf_ready:
-        horizon_note = "高周期未成熟，只做短线反抽。"
+        horizon_note = L("高周期未成熟，只做短线反抽。", "Higher timeframe not mature; only trade short-term bounces. ")
     regime_note = ""
     if market_regime is not None:
-        regime_note = f"{market_regime.regime_zh}：{market_regime.playbook_line} "
+        regime_note = L(
+            f"{market_regime.regime_zh}：{market_regime.playbook_line} ",
+            f"{market_regime.regime_zh}: {market_regime.playbook_line} ",
+        )
     suffix = f"{horizon_note}{regime_note}"
 
     if bias == "up":
@@ -136,7 +140,7 @@ def generate_baseline_plan(
             if rr >= min_rr and stop_loss < trial_entry < target1:
                 conf = ""
                 if swing.confluence_382 or swing.confluence_618:
-                    conf = "斐波与 BOLL 中轨共振。"
+                    conf = L("斐波与 BOLL 中轨共振。", "Fib confluence with the BOLL midline. ")
                 return TradePlan(
                     direction="long",
                     entry_low=min(trial_entry * 0.997, trial_entry),
@@ -145,15 +149,22 @@ def generate_baseline_plan(
                     take_profit_1=target1,
                     take_profit_2=target2,
                     rr_ratio=rr,
-                    rationale=(
+                    rationale=L(
                         f"日线偏多·反弹锁点：近目标={target1:.4f}，"
                         f"延伸={target2:.4f}；防守 {stop_loss:.4f}（R:R={rr:.2f}）。"
-                        f"{conf}{suffix}"
+                        f"{conf}{suffix}",
+                        f"Daily bias long · bounce levels: near target={target1:.4f}, "
+                        f"extension={target2:.4f}; defense {stop_loss:.4f} (R:R={rr:.2f}). "
+                        f"{conf}{suffix}",
                     ),
                 )
             return _wait_plan(
-                f"反弹锁点已给出，但现价相对防守 R:R={rr:.2f} 不足；"
-                f"观察 {_fmt(target1)} / {_fmt(target2)}。{suffix}",
+                L(
+                    f"反弹锁点已给出，但现价相对防守 R:R={rr:.2f} 不足；"
+                    f"观察 {_fmt(target1)} / {_fmt(target2)}。{suffix}",
+                    f"Bounce levels are set, but R:R={rr:.2f} from current price to defense is too low; "
+                    f"watch {_fmt(target1)} / {_fmt(target2)}. {suffix}",
+                ),
                 rr=rr,
             )
 
@@ -170,29 +181,40 @@ def generate_baseline_plan(
                     take_profit_1=target1,
                     take_profit_2=target2,
                     rr_ratio=rr,
-                    rationale=(
+                    rationale=L(
                         f"日线偏多，现价未回踩至 0.5-0.618；"
                         f"可用小头仓防踏空，止损 {stop_loss:.4f}，"
                         f"近压 {target1:.4f} / 主目标 {target2:.4f}（R:R={rr:.2f}）。"
-                        f"{horizon_note}{regime_note}"
+                        f"{horizon_note}{regime_note}",
+                        f"Daily bias long, price hasn't pulled back to 0.5-0.618; "
+                        f"a small seed position avoids missing the move, stop {stop_loss:.4f}, "
+                        f"near resistance {target1:.4f} / main target {target2:.4f} (R:R={rr:.2f}). "
+                        f"{horizon_note}{regime_note}",
                     ),
                 )
             return _wait_plan(
-                f"上涨定调但已离开回踩区且 R:R={rr:.2f} 不足，等待回踩 "
-                f"{entry_low:.4f}-{entry_high:.4f} 或观望。{suffix}",
+                L(
+                    f"上涨定调但已离开回踩区且 R:R={rr:.2f} 不足，等待回踩 "
+                    f"{entry_low:.4f}-{entry_high:.4f} 或观望。{suffix}",
+                    f"Uptrend bias but price has left the pullback zone and R:R={rr:.2f} is too low; wait for a pullback to "
+                    f"{entry_low:.4f}-{entry_high:.4f} or stay out. {suffix}",
+                ),
                 rr=rr,
             )
 
         rr = calculate_rr(entry_mid, stop_loss, target1, "long")
         if rr < min_rr:
             return _wait_plan(
-                f"上涨结构但 R:R={rr:.2f} 不足 {min_rr}，建议观望。{suffix}",
+                L(
+                    f"上涨结构但 R:R={rr:.2f} 不足 {min_rr}，建议观望。{suffix}",
+                    f"Uptrend structure but R:R={rr:.2f} is below {min_rr}; stay out. {suffix}",
+                ),
                 rr=rr,
             )
 
         conf = ""
         if swing is not None and (swing.confluence_382 or swing.confluence_618):
-            conf = "斐波与 BOLL 中轨共振。"
+            conf = L("斐波与 BOLL 中轨共振。", "Fib confluence with the BOLL midline. ")
         return TradePlan(
             direction="long",
             entry_low=entry_low,
@@ -201,18 +223,25 @@ def generate_baseline_plan(
             take_profit_1=target1,
             take_profit_2=target2,
             rr_ratio=rr,
-            rationale=(
+            rationale=L(
                 f"日线偏多，回踩 0.5-0.618 低多，"
                 f"止损/防守 {stop_loss:.4f}，"
                 f"近压 {target1:.4f}、主目标 {target2:.4f}（R:R={rr:.2f}）。"
-                f"{conf}{suffix}"
+                f"{conf}{suffix}",
+                f"Daily bias long, buy the 0.5-0.618 pullback, "
+                f"stop/defense {stop_loss:.4f}, "
+                f"near resistance {target1:.4f}, main target {target2:.4f} (R:R={rr:.2f}). "
+                f"{conf}{suffix}",
             ),
         )
 
     if bias == "down":
         if market_regime is not None and market_regime.below_waist:
             return _wait_plan(
-                f"已近腰斩线 {_fmt(market_regime.waist_line)}，穷寇莫追，不再加空。{suffix}"
+                L(
+                    f"已近腰斩线 {_fmt(market_regime.waist_line)}，穷寇莫追，不再加空。{suffix}",
+                    f"Near the halfway line {_fmt(market_regime.waist_line)}; don't chase a cornered market, no more shorts. {suffix}",
+                )
             )
         entry_low = fib.rebound_500
         entry_high = fib.rebound_618
@@ -225,7 +254,10 @@ def generate_baseline_plan(
 
         if rr < min_rr:
             return _wait_plan(
-                f"下跌结构但 R:R={rr:.2f} 不足 {min_rr}，建议观望。{suffix}",
+                L(
+                    f"下跌结构但 R:R={rr:.2f} 不足 {min_rr}，建议观望。{suffix}",
+                    f"Downtrend structure but R:R={rr:.2f} is below {min_rr}; stay out. {suffix}",
+                ),
                 rr=rr,
             )
 
@@ -237,17 +269,25 @@ def generate_baseline_plan(
             take_profit_1=target1,
             take_profit_2=target2,
             rr_ratio=rr,
-            rationale=(
+            rationale=L(
                 f"日线偏空，反弹 0.5-0.618 高空，"
                 f"止损/防守 {stop_loss:.4f}，"
-                f"目标 {target1:.4f}（R:R={rr:.2f}）。{suffix}"
+                f"目标 {target1:.4f}（R:R={rr:.2f}）。{suffix}",
+                f"Daily bias short, short the 0.5-0.618 bounce, "
+                f"stop/defense {stop_loss:.4f}, "
+                f"target {target1:.4f} (R:R={rr:.2f}). {suffix}",
             ),
         )
 
     if swing is not None:
         return _wait_plan(
-            f"震荡定调。反抽观察 {_fmt(swing.rebound_382)}，"
-            f"大反弹观察 {_fmt(swing.rebound_618)}；"
-            f"上破/下破边界再动手。{suffix}"
+            L(
+                f"震荡定调。反抽观察 {_fmt(swing.rebound_382)}，"
+                f"大反弹观察 {_fmt(swing.rebound_618)}；"
+                f"上破/下破边界再动手。{suffix}",
+                f"Range bias. Watch {_fmt(swing.rebound_382)} for a relief bounce, "
+                f"{_fmt(swing.rebound_618)} for a larger bounce; "
+                f"act only after the range breaks up or down. {suffix}",
+            )
         )
-    return _wait_plan("震荡市无明确方向，建议观望。")
+    return _wait_plan(L("震荡市无明确方向，建议观望。", "Ranging market with no clear direction; stay out."))

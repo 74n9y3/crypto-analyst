@@ -12,6 +12,7 @@ import diskcache
 import requests
 
 from analyst.config import get_settings
+from analyst.i18n import L, get_lang
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def fetch_derivatives(symbol: str, ttl_seconds: int = 60) -> DerivativesSnapshot
     """
     fsym = symbol.replace("/", "").upper()  # BTC/USDT → BTCUSDT
     cache = _cache()
-    cache_key = f"deriv:{fsym}"
+    cache_key = f"deriv:{fsym}:{get_lang()}"
 
     cached = cache.get(cache_key)
     if cached is not None:
@@ -130,25 +131,25 @@ def fetch_derivatives(symbol: str, ttl_seconds: int = 60) -> DerivativesSnapshot
         # ─── 解读 ───
         funding_pct = funding_rate * 100
         if funding_pct > 0.05:
-            funding_sentiment = "🔥 多头狂热（小心反向）"
+            funding_sentiment = L("🔥 多头狂热（小心反向）", "🔥 Longs crowded (watch a fade)")
         elif funding_pct > 0.01:
-            funding_sentiment = "📈 偏多"
+            funding_sentiment = L("📈 偏多", "📈 Long bias")
         elif funding_pct < -0.05:
-            funding_sentiment = "❄️ 空头狂热（反弹动能）"
+            funding_sentiment = L("❄️ 空头狂热（反弹动能）", "❄️ Shorts crowded (bounce fuel)")
         elif funding_pct < -0.01:
-            funding_sentiment = "📉 偏空"
+            funding_sentiment = L("📉 偏空", "📉 Short bias")
         else:
-            funding_sentiment = "⚖️ 中性"
+            funding_sentiment = L("⚖️ 中性", "⚖️ Neutral")
 
         # OI 信号：结合 24h 价格方向，但这里没有，先按 OI 变化幅度
         if oi_24h_pct > 10:
-            oi_signal = f"📈 OI 24h +{oi_24h_pct:.1f}%（资金大量涌入）"
+            oi_signal = L(f"📈 OI 24h +{oi_24h_pct:.1f}%（资金大量涌入）", f"📈 OI 24h +{oi_24h_pct:.1f}% (capital flooding in)")
         elif oi_24h_pct < -10:
-            oi_signal = f"📉 OI 24h {oi_24h_pct:.1f}%（资金撤离/平仓）"
+            oi_signal = L(f"📉 OI 24h {oi_24h_pct:.1f}%（资金撤离/平仓）", f"📉 OI 24h {oi_24h_pct:.1f}% (capital leaving / covering)")
         elif abs(oi_24h_pct) > 3:
             oi_signal = f"OI 24h {oi_24h_pct:+.1f}%"
         else:
-            oi_signal = f"OI 24h {oi_24h_pct:+.1f}%（平稳）"
+            oi_signal = L(f"OI 24h {oi_24h_pct:+.1f}%（平稳）", f"OI 24h {oi_24h_pct:+.1f}% (steady)")
 
         snap = DerivativesSnapshot(
             symbol=symbol,

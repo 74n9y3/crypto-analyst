@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 from analyst.compute.strategies.cycle_switch import HALVING_DATES
 from analyst.data.fetcher import Candle, CandleSeries
+from analyst.i18n import L
 
 # Wolfy 图 1：历次熊市底部（= 下一轮牛市起点）
 WOLFY_BEAR_BOTTOMS = [
@@ -96,9 +97,11 @@ class WaveIndexState:
     alerts: tuple[str, ...] = ()
 
     def line(self) -> str:
-        return (
+        return L(
             f"狼波 {self.value:.3f} · {self.phase_label} · 高度 {self.height:,} · "
-            f"距{self.turn_label} {self.blocks_to_turn:,} 块（约 {self.days_to_turn} 天）"
+            f"距{self.turn_label} {self.blocks_to_turn:,} 块（约 {self.days_to_turn} 天）",
+            f"Wolfy Wave {self.value:.3f} · {self.phase_label} · height {self.height:,} · "
+            f"{self.blocks_to_turn:,} blocks to {self.turn_label} (~{self.days_to_turn} days)",
         )
 
 
@@ -123,21 +126,21 @@ def wave_index_state(height: int) -> WaveIndexState:
     bear_len = HALVING_INTERVAL - 2 * WAVE_BULL_HALF
     if bull:
         blocks_to_turn = int(WAVE_BULL_HALF - d)
-        phase, phase_label, turn_label = "bull", "牛市上行", "理论牛顶"
+        phase, phase_label, turn_label = "bull", L("牛市上行", "Bull rise"), L("理论牛顶", "theoretical bull top")
         progress = value
     else:
         into = d - WAVE_BULL_HALF if d > 0 else d + HALVING_INTERVAL - WAVE_BULL_HALF
         blocks_to_turn = int(round(bear_len - into))
-        phase, phase_label, turn_label = "bear", "熊市下行", "理论熊底"
+        phase, phase_label, turn_label = "bear", L("熊市下行", "Bear decline"), L("理论熊底", "theoretical bear bottom")
         progress = 1.0 - value
     days = max(0, int(round(blocks_to_turn * _BLOCK_MINUTES / 60 / 24)))
     notes: list[str] = []
     if bull and value >= 0.85:
-        notes.append(f"狼波临近理论牛顶（{value:.3f}）")
+        notes.append(L(f"狼波临近理论牛顶（{value:.3f}）", f"Wolfy Wave near the theoretical bull top ({value:.3f})"))
     elif not bull and value <= 0.15:
-        notes.append(f"狼波临近理论熊底（{value:.3f}）")
+        notes.append(L(f"狼波临近理论熊底（{value:.3f}）", f"Wolfy Wave near the theoretical bear bottom ({value:.3f})"))
     if bull and abs(d) <= 5_000:
-        notes.append(f"距减半约 {abs(int(d)):,} 块，狼波接近 0.5")
+        notes.append(L(f"距减半约 {abs(int(d)):,} 块，狼波接近 0.5", f"~{abs(int(d)):,} blocks from a halving; Wolfy Wave near 0.5"))
     return WaveIndexState(
         height=h,
         value=value,
@@ -201,13 +204,13 @@ def wave_chart(height: int, *, now_ts: float | None = None) -> dict:
         halv = i * HALVING_INTERVAL
         top = i * HALVING_INTERVAL + WAVE_BULL_HALF
         xs.add(bottom)
-        markers.append({**point(bottom), "kind": "bottom", "label": "熊底"})
+        markers.append({**point(bottom), "kind": "bottom", "label": L("熊底", "Bear bottom")})
         if h0 <= halv <= h1:
             xs.add(halv)
-            markers.append({**point(halv), "kind": "halving", "label": "减半"})
+            markers.append({**point(halv), "kind": "halving", "label": L("减半", "Halving")})
         if h0 < top < h1:
             xs.add(top)
-            markers.append({**point(top), "kind": "top", "label": "牛顶"})
+            markers.append({**point(top), "kind": "top", "label": L("牛顶", "Bull top")})
     points = [point(x) for x in sorted(xs)]
     markers.sort(key=lambda m: m["height"])
     return {"now_height": h, "points": points, "markers": markers}
@@ -257,25 +260,25 @@ def compute_wolfy_wave(closes: list[float]) -> WolfyWaveState:
         roc = (closes[-1] / closes[-21] - 1.0) * 100.0
 
     if rsi >= 80:
-        heat, label = "extreme_hot", "过热（红）"
+        heat, label = "extreme_hot", L("过热（红）", "Overheated (red)")
     elif rsi >= 65:
-        heat, label = "hot", "偏热（橙）"
+        heat, label = "hot", L("偏热（橙）", "Warm (orange)")
     elif rsi >= 40:
-        heat, label = "neutral", "中性（黄绿）"
+        heat, label = "neutral", L("中性（黄绿）", "Neutral (yellow-green)")
     elif rsi >= 30:
-        heat, label = "cool", "偏冷（浅蓝）"
+        heat, label = "cool", L("偏冷（浅蓝）", "Cool (light blue)")
     else:
-        heat, label = "extreme_cold", "超卖（深蓝）"
+        heat, label = "extreme_cold", L("超卖（深蓝）", "Oversold (deep blue)")
 
     alerts: list[str] = []
     if heat == "extreme_hot":
-        alerts.append("狼波过热：动能极端偏高，警惕牛市末端 / 假突破")
+        alerts.append(L("狼波过热：动能极端偏高，警惕牛市末端 / 假突破", "Wolfy Wave overheated: extreme momentum, watch for a late-bull / fake breakout"))
     elif heat == "hot" and roc > 15:
-        alerts.append("狼波偏热：短期涨速较快，不宜追高")
+        alerts.append(L("狼波偏热：短期涨速较快，不宜追高", "Wolfy Wave warm: short-term rise is fast, don't chase"))
     elif heat == "extreme_cold":
-        alerts.append("狼波超卖：动能极端偏低，熊市末端可关注抄底窗口")
+        alerts.append(L("狼波超卖：动能极端偏低，熊市末端可关注抄底窗口", "Wolfy Wave oversold: extreme low momentum, a late-bear dip-buy window"))
     elif heat == "cool" and roc < -15:
-        alerts.append("狼波偏冷：短期跌速较快，勿盲目追空")
+        alerts.append(L("狼波偏冷：短期跌速较快，勿盲目追空", "Wolfy Wave cool: short-term drop is fast, don't blindly short"))
 
     return WolfyWaveState(
         rsi=rsi,
@@ -289,12 +292,14 @@ def compute_wolfy_wave(closes: list[float]) -> WolfyWaveState:
 def format_milestone_countdown(cal: WolfyCalendarState) -> str:
     """转折点预估倒计时（周期提醒主文案）。"""
     ms = cal.next_milestone
-    phase_zh = "牛市" if cal.phase == "bull" else "熊市"
+    phase_zh = L("牛市", "Bull") if cal.phase == "bull" else L("熊市", "Bear")
     urgent = cal.days_to_milestone <= WOLFY_ALERT_URGENT_DAYS
     icon = "🔴" if urgent else "⏳"
-    return (
+    return L(
         f"{icon} {phase_zh} · 距转折点「{ms.label}」预估还有 "
-        f"{cal.days_to_milestone} 天（{ms.date:%Y-%m-%d}）"
+        f"{cal.days_to_milestone} 天（{ms.date:%Y-%m-%d}）",
+        f"{icon} {phase_zh} · ~{cal.days_to_milestone} days to turning point “{ms.label}” "
+        f"({ms.date:%Y-%m-%d})",
     )
 
 
@@ -320,29 +325,37 @@ def _calendar_alerts(phase: str, days_to: int, milestone_kind: str, milestone_la
     urgent = days_to <= WOLFY_ALERT_URGENT_DAYS
     if phase == "bull" and milestone_kind == "bull_top":
         if urgent:
-            alerts.append(
-                f"🔴 转折点预警：距「{milestone_label}」约 {days_to} 天，临近顶部区间"
-            )
+            alerts.append(L(
+                f"🔴 转折点预警：距「{milestone_label}」约 {days_to} 天，临近顶部区间",
+                f"🔴 Turning-point alert: ~{days_to} days to “{milestone_label}”, near a top zone",
+            ))
         else:
-            alerts.append(
-                f"⚠️ 转折点关注：距「{milestone_label}」约 {days_to} 天，注意减仓/止盈"
-            )
+            alerts.append(L(
+                f"⚠️ 转折点关注：距「{milestone_label}」约 {days_to} 天，注意减仓/止盈",
+                f"⚠️ Turning point watch: ~{days_to} days to “{milestone_label}”, consider reducing / taking profit",
+            ))
     elif phase == "bear" and milestone_kind == "bear_bottom":
         if urgent:
-            alerts.append(
-                f"🟢 转折点预警：距「{milestone_label}」约 {days_to} 天，临近抄底窗口"
-            )
+            alerts.append(L(
+                f"🟢 转折点预警：距「{milestone_label}」约 {days_to} 天，临近抄底窗口",
+                f"🟢 Turning-point alert: ~{days_to} days to “{milestone_label}”, a dip-buy window",
+            ))
         else:
-            alerts.append(
-                f"📉 转折点关注：距「{milestone_label}」约 {days_to} 天，可逐步观察建仓"
-            )
+            alerts.append(L(
+                f"📉 转折点关注：距「{milestone_label}」约 {days_to} 天，可逐步观察建仓",
+                f"📉 Turning point watch: ~{days_to} days to “{milestone_label}”, start watching entries",
+            ))
     elif phase == "bear" and milestone_kind == "bull_start":
         if urgent:
-            alerts.append(f"🚀 转折点临近：距「{milestone_label}」约 {days_to} 天")
+            alerts.append(L(
+                f"🚀 转折点临近：距「{milestone_label}」约 {days_to} 天",
+                f"🚀 Turning point soon: ~{days_to} days to “{milestone_label}”",
+            ))
         else:
-            alerts.append(
-                f"📈 转折点关注：距「{milestone_label}」约 {days_to} 天，熊市尾声"
-            )
+            alerts.append(L(
+                f"📈 转折点关注：距「{milestone_label}」约 {days_to} 天，熊市尾声",
+                f"📈 Turning point watch: ~{days_to} days to “{milestone_label}”, late bear",
+            ))
     return alerts
 
 
@@ -361,10 +374,10 @@ def wolfy_calendar_phase(
         if ts < bull_top:
             days_in = (ts - anchor).days + 1
             days_to = (bull_top - ts).days
-            ms = WolfyMilestone("bull_top", bull_top, "预计牛市见顶")
+            ms = WolfyMilestone("bull_top", bull_top, L("预计牛市见顶", "Estimated bull top"))
             alerts = _calendar_alerts("bull", days_to, "bull_top", ms.label)
             if days_in <= 14:
-                alerts.insert(0, "🐂 日历：处于牛市初期（熊市底后两周内）")
+                alerts.insert(0, L("🐂 日历：处于牛市初期（熊市底后两周内）", "🐂 Calendar: early bull (within two weeks of the bear bottom)"))
             return WolfyCalendarState(
                 phase="bull",
                 phase_day=days_in,
@@ -377,10 +390,10 @@ def wolfy_calendar_phase(
         if ts < bear_bottom:
             days_in = (ts - bull_top).days + 1
             days_to = (bear_bottom - ts).days
-            ms = WolfyMilestone("bear_bottom", bear_bottom, "预计熊市见底")
+            ms = WolfyMilestone("bear_bottom", bear_bottom, L("预计熊市见底", "Estimated bear bottom"))
             alerts = _calendar_alerts("bear", days_to, "bear_bottom", ms.label)
             if days_in <= 14:
-                alerts.insert(0, "🐻 日历：已进入预计熊市区间（见顶后两周内）")
+                alerts.insert(0, L("🐻 日历：已进入预计熊市区间（见顶后两周内）", "🐻 Calendar: entered the estimated bear window (within two weeks of the top)"))
             return WolfyCalendarState(
                 phase="bear",
                 phase_day=days_in,
@@ -417,27 +430,27 @@ def build_wolfy_timeline(
             "phase": "bull",
             "start": cur.isoformat(),
             "end": bull_top.isoformat(),
-            "label": "牛市",
+            "label": L("牛市", "Bull"),
             "days": WOLFY_BULL_DAYS,
         })
         segments.append({
             "phase": "bear",
             "start": bull_top.isoformat(),
             "end": bear_bottom.isoformat(),
-            "label": "熊市",
+            "label": L("熊市", "Bear"),
             "days": WOLFY_BEAR_DAYS,
         })
         markers.extend([
-            {"kind": "bull_start", "date": cur.isoformat(), "label": "牛起"},
-            {"kind": "bull_top", "date": bull_top.isoformat(), "label": "预计牛顶"},
-            {"kind": "bear_bottom", "date": bear_bottom.isoformat(), "label": "预计熊底"},
+            {"kind": "bull_start", "date": cur.isoformat(), "label": L("牛起", "Bull start")},
+            {"kind": "bull_top", "date": bull_top.isoformat(), "label": L("预计牛顶", "Est. bull top")},
+            {"kind": "bear_bottom", "date": bear_bottom.isoformat(), "label": L("预计熊底", "Est. bear bottom")},
         ])
         for h in HALVING_DATES:
             if cur <= h < bear_bottom:
                 markers.append({
                     "kind": "halving",
                     "date": h.isoformat(),
-                    "label": "减半",
+                    "label": L("减半", "Halving"),
                 })
         cur = bear_bottom
         cycle_idx += 1
@@ -525,12 +538,15 @@ def evaluate_cycle_outlook(
     alerts = [format_milestone_countdown(cal)]
     alerts.extend(cal.alerts)
 
-    zh_phase = "牛市" if cal.phase == "bull" else "熊市"
+    zh_phase = L("牛市", "bull") if cal.phase == "bull" else L("熊市", "bear")
     pct = cal.phase_day / cal.phase_total_days * 100
-    summary = (
+    summary = L(
         f"日历{zh_phase}第 {cal.phase_day}/{cal.phase_total_days} 天（{pct:.0f}%），"
         f"距{cal.next_milestone.label}还有 {cal.days_to_milestone} 天"
-        f"（{cal.next_milestone.date:%Y-%m-%d}）"
+        f"（{cal.next_milestone.date:%Y-%m-%d}）",
+        f"Calendar {zh_phase} day {cal.phase_day}/{cal.phase_total_days} ({pct:.0f}%), "
+        f"{cal.days_to_milestone} days to {cal.next_milestone.label} "
+        f"({cal.next_milestone.date:%Y-%m-%d})",
     )
 
     return CycleOutlook(
@@ -547,18 +563,24 @@ def format_outlook_text(outlook: CycleOutlook, symbol: str = "BTC/USDT") -> str:
     """Telegram / 终端文案。"""
     cal = outlook.calendar
     lines = [
-        f"🧭 周期展望 · {symbol}",
+        L(f"🧭 周期展望 · {symbol}", f"🧭 Cycle outlook · {symbol}"),
         format_milestone_countdown(cal),
         outlook.summary,
-        f"现价 {outlook.price:.6g} · 截至 {outlook.as_of:%Y-%m-%d %H:%M} UTC",
-        f"本周期牛市起点 {cal.cycle_bull_start:%Y-%m-%d}",
+        L(
+            f"现价 {outlook.price:.6g} · 截至 {outlook.as_of:%Y-%m-%d %H:%M} UTC",
+            f"Price {outlook.price:.6g} · as of {outlook.as_of:%Y-%m-%d %H:%M} UTC",
+        ),
+        L(
+            f"本周期牛市起点 {cal.cycle_bull_start:%Y-%m-%d}",
+            f"This cycle's bull start {cal.cycle_bull_start:%Y-%m-%d}",
+        ),
     ]
     if outlook.wave_index:
         w = outlook.wave_index
         lines.append(w.line())
         lines.extend(w.alerts)
     if outlook.alerts:
-        lines.append("—— 日历提醒 ——")
+        lines.append(L("—— 日历提醒 ——", "—— Calendar alerts ——"))
         lines.extend(outlook.alerts[:6])
-    lines.append("刻舟求剑日历 + 狼波指数（区块高度），仅供参考")
+    lines.append(L("刻舟求剑日历 + 狼波指数（区块高度），仅供参考", "Calendar model + Wolfy Wave (block height), for reference only"))
     return "\n".join(lines)

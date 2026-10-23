@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
 
+from analyst import i18n
 from analyst.storage.db import init_db
 from analyst.web.routes import router
 from analyst.web.monitor_routes import router as monitor_router
@@ -19,6 +22,10 @@ from analyst.web.schedule_routes import router as schedule_router
 logger = logging.getLogger("uvicorn.error")
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class LangRequest(BaseModel):
+    lang: str
 
 
 def _configure_analyst_logging() -> None:
@@ -182,11 +189,21 @@ def create_app() -> FastAPI:
 
     @app.get("/i18n.js")
     def i18n_js():
-        return FileResponse(
-            STATIC_DIR / "i18n.js",
+        boot = json.dumps({"lang": i18n.get_lang(), "explicit": i18n.is_explicit()})
+        body = f"window.__SERVER_LANG = {boot};\n" + (STATIC_DIR / "i18n.js").read_text(encoding="utf-8")
+        return Response(
+            body,
             media_type="text/javascript",
-            headers={"Cache-Control": "no-cache"},
+            headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/settings/lang")
+    def get_ui_lang():
+        return {"lang": i18n.get_lang(), "explicit": i18n.is_explicit()}
+
+    @app.post("/api/settings/lang")
+    def set_ui_lang(req: LangRequest):
+        return {"lang": i18n.set_lang(req.lang), "explicit": True}
 
     @app.get("/icon-192.png")
     def icon_192():

@@ -29,12 +29,16 @@ SUPPORTED_LANGS = ("zh", "en")
 
 
 def normalize_lang(lang: str | None) -> str:
-    """界面语言归一化：只认 zh / en，其余按 zh。"""
-    x = (lang or "").strip().lower()
+    """界面语言归一化：只认 zh / en；未传时跟随全局输出语言。"""
+    if lang is None or not str(lang).strip():
+        from analyst.i18n import get_lang
+
+        return get_lang()
+    x = str(lang).strip().lower()
     return "en" if x.startswith("en") else "zh"
 
 
-def language_directive(lang: str | None) -> str:
+def language_directive(lang: str | None = None) -> str:
     """追加在用户消息末尾的输出语言要求；中文为默认，不追加。"""
     if normalize_lang(lang) != "en":
         return ""

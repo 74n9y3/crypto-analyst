@@ -10,13 +10,24 @@
   const ATTRS = ['title', 'placeholder', 'aria-label', 'data-tip', 'alt'];
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'NOSCRIPT']);
 
+  const SERVER = window.__SERVER_LANG || null;
+
   function detectLang() {
+    if (SERVER && SERVER.explicit && (SERVER.lang === 'zh' || SERVER.lang === 'en')) return SERVER.lang;
     try {
       const saved = localStorage.getItem(STORE_KEY);
       if (saved === 'zh' || saved === 'en') return saved;
     } catch (_) {}
     const nav = (navigator.languages && navigator.languages[0]) || navigator.language || 'zh';
     return String(nav).toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  }
+
+  function pushServerLang(v) {
+    return fetch('/api/settings/lang', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: v }),
+    }).catch(() => {});
   }
 
   const EN = {
@@ -747,8 +758,11 @@
   function setLang(next) {
     const v = next === 'en' ? 'en' : 'zh';
     try { localStorage.setItem(STORE_KEY, v); } catch (_) {}
-    location.reload();
+    pushServerLang(v).finally(() => location.reload());
   }
+
+  try { localStorage.setItem(STORE_KEY, lang); } catch (_) {}
+  if (SERVER && (!SERVER.explicit || SERVER.lang !== lang)) pushServerLang(lang);
 
   document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
 

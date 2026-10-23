@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from analyst.compute.fibonacci import FibLevels, compute_fib
 from analyst.compute.structure import Structure
 from analyst.data.fetcher import CandleSeries
+from analyst.i18n import L
 
 
 @dataclass
@@ -168,9 +169,9 @@ def _rs_note(
     btc_series: CandleSeries | None,
 ) -> str:
     if "BTC" in (symbol or "").upper().replace("/", ""):
-        return "标的即 BTC"
+        return L("标的即 BTC", "Symbol is BTC")
     if not series or not btc_series or len(series.candles) < 10 or len(btc_series.candles) < 10:
-        return "暂无对比"
+        return L("暂无对比", "No comparison yet")
     n = min(20, len(series.candles), len(btc_series.candles))
     a = series.candles[-n:]
     b = btc_series.candles[-n:]
@@ -184,10 +185,19 @@ def _rs_note(
     a_hl = a_low > a_first_low * 0.998
     b_hl = b_low > b_first_low * 0.998
     if a_ret > b_ret + 1 and (a_hl or not b_hl):
-        return f"强于BTC（近窗收益 {a_ret:+.1f}% vs {b_ret:+.1f}%）"
+        return L(
+            f"强于BTC（近窗收益 {a_ret:+.1f}% vs {b_ret:+.1f}%）",
+            f"Stronger than BTC (recent return {a_ret:+.1f}% vs {b_ret:+.1f}%)",
+        )
     if a_ret < b_ret - 1:
-        return f"弱于BTC（近窗收益 {a_ret:+.1f}% vs {b_ret:+.1f}%）"
-    return f"与BTC同步（近窗 {a_ret:+.1f}% vs {b_ret:+.1f}%）"
+        return L(
+            f"弱于BTC（近窗收益 {a_ret:+.1f}% vs {b_ret:+.1f}%）",
+            f"Weaker than BTC (recent return {a_ret:+.1f}% vs {b_ret:+.1f}%)",
+        )
+    return L(
+        f"与BTC同步（近窗 {a_ret:+.1f}% vs {b_ret:+.1f}%）",
+        f"In line with BTC (recent {a_ret:+.1f}% vs {b_ret:+.1f}%)",
+    )
 
 
 def compute_swing_levels(
@@ -232,24 +242,33 @@ def compute_swing_levels(
     rs = _rs_note(symbol, primary_series, btc_series)
 
     if daily_bias == "up":
-        summary = (
+        summary = L(
             f"日线偏多，策略偏「低多」；近压 {_fmt(fib.rebound_382)}，"
-            f"主目标 {_fmt(fib.rebound_618)}；破 {_fmt(defense)} 失效"
+            f"主目标 {_fmt(fib.rebound_618)}；破 {_fmt(defense)} 失效",
+            f"Daily bias long, favor buying dips; near resistance {_fmt(fib.rebound_382)}, "
+            f"main target {_fmt(fib.rebound_618)}; invalid below {_fmt(defense)}",
         )
     elif daily_bias == "down":
-        summary = (
+        summary = L(
             f"日线偏空，策略偏「高空」；反弹区关注 {_fmt(fib.rebound_500)}-{_fmt(fib.rebound_618)}；"
-            f"破 {_fmt(defense)} 失效"
+            f"破 {_fmt(defense)} 失效",
+            f"Daily bias short, favor shorting rallies; watch the bounce zone {_fmt(fib.rebound_500)}-{_fmt(fib.rebound_618)}; "
+            f"invalid above {_fmt(defense)}",
         )
     else:
-        summary = (
+        summary = L(
             f"日线震荡；反抽看 {_fmt(fib.rebound_382)}，大反弹看 {_fmt(fib.rebound_618)}；"
-            f"等边界再动手"
+            f"等边界再动手",
+            f"Daily range; relief bounce to {_fmt(fib.rebound_382)}, larger bounce to {_fmt(fib.rebound_618)}; "
+            f"wait for the range edges",
         )
     if not htf_ready:
-        summary += "；高周期未成熟→只做短线反抽"
+        summary += L("；高周期未成熟→只做短线反抽", "; higher timeframe not mature → short-term bounces only")
     if touch_count >= 2:
-        summary += f"；关键位 {_fmt(touch_level)} 已第 {touch_count} 次触及"
+        summary += L(
+            f"；关键位 {_fmt(touch_level)} 已第 {touch_count} 次触及",
+            f"; key level {_fmt(touch_level)} touched {touch_count} times",
+        )
 
     return SwingLevels(
         swing_high=fib.high,

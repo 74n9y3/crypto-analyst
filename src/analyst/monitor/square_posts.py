@@ -15,6 +15,7 @@ from typing import Any
 from analyst.compute.swing_levels import SwingLevels
 from analyst.compute.market_regime import MarketRegime
 from analyst.config import get_settings
+from analyst.i18n import L, is_en
 from analyst.integrations.binance_square import SquareApiError, mask_key, post_content, upload_image
 
 logger = logging.getLogger(__name__)
@@ -90,41 +91,64 @@ def _cta_line(
       move_breakout — 加速拉升后：别追，突破 near 再跟
     """
     tag = _cashtag(symbol)
+    f = _fmt_price
 
     def _with_target(prefix: str) -> str:
         if target is not None:
-            return f"{prefix}，上看 {_fmt_price(target)}。"
-        return f"{prefix}。"
+            return L(f"{prefix}，上看 {f(target)}。", f"{prefix}, upside {f(target)}.")
+        return L(f"{prefix}。", f"{prefix}.")
 
     if side == "long":
         if scene == "resist_test" and near is not None and defense is not None:
             return _with_target(
-                f"点 {tag} 看永续，突破 {_fmt_price(near)} 可追，破 {_fmt_price(defense)} 走"
+                L(
+                    f"点 {tag} 看永续，突破 {f(near)} 可追，破 {f(defense)} 走",
+                    f"Tap {tag} for perps: long on a break above {f(near)}, out below {f(defense)}",
+                )
             )
         if scene == "support_hold" and defense is not None:
-            return _with_target(f"点 {tag} 看永续，守住 {_fmt_price(defense)} 可跟，跌破就走")
+            return _with_target(
+                L(
+                    f"点 {tag} 看永续，守住 {f(defense)} 可跟，跌破就走",
+                    f"Tap {tag} for perps: hold {f(defense)} to go long, out if it breaks",
+                )
+            )
         if scene == "move_breakout" and near is not None and defense is not None:
             return _with_target(
-                f"点 {tag} 看永续，别追，突破 {_fmt_price(near)} 再跟，破 {_fmt_price(defense)} 走"
+                L(
+                    f"点 {tag} 看永续，别追，突破 {f(near)} 再跟，破 {f(defense)} 走",
+                    f"Tap {tag} for perps: don't chase, long on a break above {f(near)}, out below {f(defense)}",
+                )
             )
         if defense is not None and target is not None:
-            return (
-                f"点 {tag} 看永续，站稳 {_fmt_price(defense)} 可跟，上看 {_fmt_price(target)}。"
+            return L(
+                f"点 {tag} 看永续，站稳 {f(defense)} 可跟，上看 {f(target)}。",
+                f"Tap {tag} for perps: hold above {f(defense)} to go long, upside {f(target)}.",
             )
         if near is not None:
-            return f"点 {tag} 看行情，突破 {_fmt_price(near)} 可追，破防守就走。"
-        return f"点 {tag} 看永续，偏多思路见上。"
+            return L(
+                f"点 {tag} 看行情，突破 {f(near)} 可追，破防守就走。",
+                f"Tap {tag} for the chart: long on a break above {f(near)}, out if defense fails.",
+            )
+        return L(f"点 {tag} 看永续，偏多思路见上。", f"Tap {tag} for perps: long bias, plan above.")
     if side == "short":
         if defense is not None and target is not None:
-            return (
-                f"点 {tag} 看永续，反弹 {_fmt_price(defense)} 附近可空，下看 {_fmt_price(target)}。"
+            return L(
+                f"点 {tag} 看永续，反弹 {f(defense)} 附近可空，下看 {f(target)}。",
+                f"Tap {tag} for perps: short the bounce near {f(defense)}, downside {f(target)}.",
             )
         if near is not None:
-            return f"点 {tag} 看行情，靠近 {_fmt_price(near)} 再空，别追在支撑上。"
-        return f"点 {tag} 看永续，偏空思路见上。"
+            return L(
+                f"点 {tag} 看行情，靠近 {f(near)} 再空，别追在支撑上。",
+                f"Tap {tag} for the chart: short near {f(near)} only, don't chase into support.",
+            )
+        return L(f"点 {tag} 看永续，偏空思路见上。", f"Tap {tag} for perps: short bias, plan above.")
     if defense is not None:
-        return f"点 {tag} 看行情，守住 {_fmt_price(defense)} 再动手，方向不明先等。"
-    return f"点 {tag} 看行情，等方向明朗再动手。"
+        return L(
+            f"点 {tag} 看行情，守住 {f(defense)} 再动手，方向不明先等。",
+            f"Tap {tag} for the chart: act only if {f(defense)} holds, no clear direction yet.",
+        )
+    return L(f"点 {tag} 看行情，等方向明朗再动手。", f"Tap {tag} for the chart: wait for a clear direction.")
 
 
 def _fmt_price(x: float | None) -> str:
@@ -140,29 +164,43 @@ def _fmt_price(x: float | None) -> str:
 
 def _side_zh(side: str) -> str:
     if side == "long":
-        return "偏多"
+        return L("偏多", "Long bias")
     if side == "short":
-        return "偏空"
-    return "观望"
+        return L("偏空", "Short bias")
+    return L("观望", "Wait")
+
+
+_REGIME_EN = {"strong_trend": "Strong trend", "weak_trend": "Weak trend", "range": "Range"}
+
+
+def regime_name(regime: Any, default: str = "—") -> str:
+    """盘面名称（随输出语言）。"""
+    if regime is None:
+        return default
+    key = getattr(regime, "regime", None)
+    zh = getattr(regime, "regime_zh", None)
+    if is_en():
+        return _REGIME_EN.get(str(key or ""), str(key or zh or default))
+    return zh or default
 
 
 def _prediction_hook(regime: MarketRegime, tf: str) -> str:
     """首行钩子：明确涨跌倾向，提高点击；结论仍绑三盘事实。"""
     side = regime.trade_side
-    zh = regime.regime_zh or regime.regime
+    zh = regime_name(regime, regime.regime)
     if side == "long":
         if regime.regime == "strong_trend":
-            return f"📈 看涨｜{zh} · {tf} 偏多延续，突破可跟"
+            return L(f"📈 看涨｜{zh} · {tf} 偏多延续，突破可跟", f"📈 Bullish | {zh} · {tf} trend continues, follow breakouts")
         if regime.regime == "range":
-            return f"📈 震荡看涨｜{zh} · {tf} 回踩低多"
-        return f"📈 偏向看涨｜{zh} · {tf}"
+            return L(f"📈 震荡看涨｜{zh} · {tf} 回踩低多", f"📈 Range, leaning up | {zh} · {tf} buy the dips")
+        return L(f"📈 偏向看涨｜{zh} · {tf}", f"📈 Leaning bullish | {zh} · {tf}")
     if side == "short":
         if regime.below_waist:
-            return f"⏸ 不追空｜{zh} · 近腰斩线，穷寇莫追"
+            return L(f"⏸ 不追空｜{zh} · 近腰斩线，穷寇莫追", f"⏸ No chasing shorts | {zh} · near the 50% drawdown line")
         if regime.regime == "weak_trend":
-            return f"📉 看跌｜{zh} · {tf} 反弹高空"
-        return f"📉 偏向看跌｜{zh} · {tf}"
-    return f"👀 观望｜{zh} · {tf} 等边界再动手"
+            return L(f"📉 看跌｜{zh} · {tf} 反弹高空", f"📉 Bearish | {zh} · {tf} short rallies")
+        return L(f"📉 偏向看跌｜{zh} · {tf}", f"📉 Leaning bearish | {zh} · {tf}")
+    return L(f"👀 观望｜{zh} · {tf} 等边界再动手", f"👀 Wait | {zh} · {tf} let it reach a boundary first")
 
 
 def _post_levels(regime: MarketRegime, swing: SwingLevels | None, price: float) -> tuple[float | None, float | None, float | None]:
@@ -198,7 +236,7 @@ def _clip_sentence(text: str, n: int) -> str:
     if len(t) <= n:
         return t
     cut = t[:n]
-    k = max(cut.rfind("。"), cut.rfind("；"))
+    k = max(cut.rfind("。"), cut.rfind("；"), cut.rfind(". "), cut.rfind("; "))
     return cut[: k + 1] if k >= n // 3 else cut.rstrip("，、,") + "…"
 
 
@@ -209,23 +247,27 @@ def _outlook_line(regime: MarketRegime, swing: SwingLevels | None, price: float)
         stop, near, tgt = _post_levels(regime, swing, price)
         tgt = tgt or near
         if tgt is not None and stop is not None:
-            return (
+            return L(
                 f"预测：短线偏涨，上看 {_fmt_price(tgt)}；"
-                f"跌破 {_fmt_price(stop)} 则看涨失效"
+                f"跌破 {_fmt_price(stop)} 则看涨失效",
+                f"Outlook: leaning up short term, upside {_fmt_price(tgt)}; "
+                f"bullish view invalid below {_fmt_price(stop)}",
             )
-        return "预测：短线偏涨，站稳后再加仓；破防守转观望"
+        return L("预测：短线偏涨，站稳后再加仓；破防守转观望", "Outlook: leaning up short term, add only once it holds; flip to wait if defense breaks")
     if side == "short":
         if regime.below_waist:
-            return "预测：已近腰斩，暂不看更深下跌，宁可空仓等反抽"
+            return L("预测：已近腰斩，暂不看更深下跌，宁可空仓等反抽", "Outlook: already near a 50% drawdown, not calling for much lower; better flat and wait for a bounce")
         stop, near, tgt = _post_levels(regime, swing, price)
         tgt = tgt or near
         if tgt is not None and stop is not None:
-            return (
+            return L(
                 f"预测：短线偏跌，下看 {_fmt_price(tgt)}；"
-                f"涨破 {_fmt_price(stop)} 则看跌失效"
+                f"涨破 {_fmt_price(stop)} 则看跌失效",
+                f"Outlook: leaning down short term, downside {_fmt_price(tgt)}; "
+                f"bearish view invalid above {_fmt_price(stop)}",
             )
-        return "预测：短线偏跌，反弹再空；破防守转观望"
-    return "预测：方向不明，先观望，不追涨杀跌"
+        return L("预测：短线偏跌，反弹再空；破防守转观望", "Outlook: leaning down short term, short the bounce; flip to wait if defense breaks")
+    return L("预测：方向不明，先观望，不追涨杀跌", "Outlook: no clear direction, wait and don't chase either way")
 
 
 def _compose_regime_compact(
@@ -243,16 +285,19 @@ def _compose_regime_compact(
     tgt = target or near
     lines = [
         f"{_prediction_hook(regime, tf)} {tag}",
-        f"现价 {_fmt_price(price)} · {_side_zh(regime.trade_side)} · {regime.regime_zh}",
+        L(
+            f"现价 {_fmt_price(price)} · {_side_zh(regime.trade_side)} · {regime.regime_zh}",
+            f"Price {_fmt_price(price)} · {_side_zh(regime.trade_side)} · {regime_name(regime)}",
+        ),
     ]
     lvl: list[str] = []
     if defense is not None:
-        lvl.append(f"防守 {_fmt_price(defense)}")
+        lvl.append(L(f"防守 {_fmt_price(defense)}", f"Defense {_fmt_price(defense)}"))
     if near is not None and near != defense:
-        lbl = "近支" if regime.trade_side == "short" else "近压"
+        lbl = L("近支", "Support") if regime.trade_side == "short" else L("近压", "Resistance")
         lvl.append(f"{lbl} {_fmt_price(near)}")
     if tgt is not None and tgt not in (defense, near):
-        lbl = "下看" if regime.trade_side == "short" else "上看"
+        lbl = L("下看", "Downside") if regime.trade_side == "short" else L("上看", "Upside")
         lvl.append(f"{lbl} {_fmt_price(tgt)}")
     if lvl:
         lines.append(" · ".join(lvl))
@@ -286,15 +331,18 @@ def compose_playbook_setup_post(
     """打法提示（playbook_setup）：新 flag 出现时的短讯。"""
     tag = _cashtag(symbol)
     tf = (timeframe or "").strip().lower()
-    hint = " · ".join((flag_labels or [])[:2]) or "打法更新"
+    hint = " · ".join((flag_labels or [])[:2]) or L("打法更新", "Playbook update")
     defense, near, target = _post_levels(regime, swing, float(price))
     tgt = target or near
     lines = [
-        f"⚡ {tag} {tf} 打法：{hint}",
-        f"现价 {_fmt_price(price)} · {_side_zh(regime.trade_side)} · {regime.regime_zh}",
+        L(f"⚡ {tag} {tf} 打法：{hint}", f"⚡ {tag} {tf} setup: {hint}"),
+        L(
+            f"现价 {_fmt_price(price)} · {_side_zh(regime.trade_side)} · {regime.regime_zh}",
+            f"Price {_fmt_price(price)} · {_side_zh(regime.trade_side)} · {regime_name(regime)}",
+        ),
     ]
     if near is not None:
-        lines.append(f"关键位 {_fmt_price(near)}")
+        lines.append(L(f"关键位 {_fmt_price(near)}", f"Key level {_fmt_price(near)}"))
     lines.append(
         _cta_line(
             symbol,
@@ -328,11 +376,15 @@ def compose_level_touch_post(
     reg = regime
     cta_side = reg.trade_side if reg is not None else ("long" if is_support else "short")
     side_zh = _side_zh(cta_side)
-    regime_zh = reg.regime_zh if reg else "—"
+    regime_zh = regime_name(reg)
+    icon = "👆" if is_support else "👇"
     lines = [
-        f"{'👆' if is_support else '👇'} {tag} {tf} 触及{lvl_label} {_fmt_price(level)}"
-        + (" 守住" if is_support else " 测试"),
-        f"现价 {_fmt_price(price)} · {side_zh} · {regime_zh}",
+        L(
+            f"{icon} {tag} {tf} 触及{lvl_label} {_fmt_price(level)}" + (" 守住" if is_support else " 测试"),
+            f"{icon} {tag} {tf} "
+            + (f"tags support {_fmt_price(level)} and holds" if is_support else f"tests resistance {_fmt_price(level)}"),
+        ),
+        L(f"现价 {_fmt_price(price)} · {side_zh} · {regime_zh}", f"Price {_fmt_price(price)} · {side_zh} · {regime_zh}"),
     ]
     if reg is not None:
         defense, near, target = _post_levels(reg, swing, float(price))
@@ -405,34 +457,45 @@ def compose_daily_recap_post(
     """每日复盘短讯：保证 7 天窗口内持续有新帖 + 多 $ 标签。"""
     facts = facts or {}
     m = facts.get("market") or {}
-    zh = {"bull": "牛", "bear": "熊", "accum": "筑底"}
+    zh = (
+        {"bull": "Bull", "bear": "Bear", "accum": "Accumulation"}
+        if is_en()
+        else {"bull": "牛", "bear": "熊", "accum": "筑底"}
+    )
     regime = m.get("regime")
     btc_p = m.get("btc_price")
-    lines = ["📋 盯盘日报 · 点 $BTC $ETH 看行情"]
+    lines = [L("📋 盯盘日报 · 点 $BTC $ETH 看行情", "📋 Daily recap · tap $BTC $ETH for the charts")]
     if btc_p is not None:
         dev = m.get("btc_vs_ema200d_pct")
-        dev_s = f"（距200日线 {dev:+.1f}%）" if isinstance(dev, (int, float)) else ""
+        dev_s = (
+            L(f"（距200日线 {dev:+.1f}%）", f" ({dev:+.1f}% vs 200D MA)") if isinstance(dev, (int, float)) else ""
+        )
         lines.append(
-            f"BTC {_fmt_price(float(btc_p))} · 相位 {zh.get(regime, regime or '—')}{dev_s}"
+            L(
+                f"BTC {_fmt_price(float(btc_p))} · 相位 {zh.get(regime, regime or '—')}{dev_s}",
+                f"BTC {_fmt_price(float(btc_p))} · Phase {zh.get(regime, regime or '—')}{dev_s}",
+            )
         )
     rs = (facts.get("relative_strength") or {}).get("pairs") or {}
     if rs:
         bits = []
         for pair, v in list(rs.items())[:2]:
             st = v.get("state")
-            st_zh = "山寨强" if st == "above" else ("BTC强" if st == "below" else st)
+            st_zh = (
+                L("山寨强", "alts stronger") if st == "above" else (L("BTC强", "BTC stronger") if st == "below" else st)
+            )
             bits.append(f"{pair} {st_zh}")
         if bits:
-            lines.append("相对强弱：" + " · ".join(bits))
+            lines.append(L("相对强弱：", "Relative strength: ") + " · ".join(bits))
     if movers:
         top = sorted(movers, key=lambda x: abs(x[2]), reverse=True)[:3]
         lines.append(
-            "今日波动："
+            L("今日波动：", "Top movers: ")
             + " · ".join(
                 f"${_base_asset(sym)} {chg:+.1f}%" for sym, _, chg in top
             )
         )
-    lines.append("具体点位看最新短评；盈亏自负。")
+    lines.append(L("具体点位看最新短评；盈亏自负。", "Levels in the latest posts; trade at your own risk."))
     text = "\n".join(lines)
     if len(text) > MAX_POST_LEN:
         text = text[: MAX_POST_LEN - 1] + "…"
@@ -490,26 +553,29 @@ def compose_regime_square_post(
     side = _side_zh(regime.trade_side)
     lines = [
         f"{_prediction_hook(regime, tf)} {tag}",
-        f"现价 {_fmt_price(price)} · 方向 {side}",
+        L(f"现价 {_fmt_price(price)} · 方向 {side}", f"Price {_fmt_price(price)} · Bias {side}"),
         _outlook_line(regime, swing, float(price)),
     ]
     defense, near, target = _post_levels(regime, swing, float(price))
+    d_lbl = L("防守", "Defense")
     if regime.trade_side == "short":
-        parts = [f"防守 {_fmt_price(defense)}" if defense else None, f"近支 {_fmt_price(near)}" if near else None,
-                 f"下看 {_fmt_price(target)}" if target and target != near else None]
+        parts = [f"{d_lbl} {_fmt_price(defense)}" if defense else None,
+                 L(f"近支 {_fmt_price(near)}", f"Support {_fmt_price(near)}") if near else None,
+                 L(f"下看 {_fmt_price(target)}", f"Downside {_fmt_price(target)}") if target and target != near else None]
     else:
-        parts = [f"防守 {_fmt_price(defense)}" if defense else None, f"近压 {_fmt_price(near)}" if near else None,
-                 f"目标 {_fmt_price(target)}" if target and target != near else None]
+        parts = [f"{d_lbl} {_fmt_price(defense)}" if defense else None,
+                 L(f"近压 {_fmt_price(near)}", f"Resistance {_fmt_price(near)}") if near else None,
+                 L(f"目标 {_fmt_price(target)}", f"Target {_fmt_price(target)}") if target and target != near else None]
     parts = [x for x in parts if x]
     if parts:
-        lines.append("点位｜" + " · ".join(parts))
+        lines.append(L("点位｜", "Levels | ") + " · ".join(parts))
     play = (regime.playbook_line or "").strip()
     if play:
-        lines.append(f"打法：{_clip_sentence(play, 160)}")
+        lines.append(L(f"打法：{_clip_sentence(play, 160)}", f"Playbook: {_clip_sentence(play, 160)}"))
     if regime.trade_side == "long":
-        lines.append("想跟单先看防守是否守住，别追在鱼尾。")
+        lines.append(L("想跟单先看防守是否守住，别追在鱼尾。", "Want in? Check that defense holds first; don't buy the tail end."))
     elif regime.trade_side == "short" and not regime.below_waist:
-        lines.append("想开空等反弹靠近阻力，别贴着支撑追空。")
+        lines.append(L("想开空等反弹靠近阻力，别贴着支撑追空。", "Want to short? Wait for a bounce into resistance; don't short right on support."))
     lines.append("")
     lines.extend(indicator_block(regime, swing, price=price, timeframe=timeframe))
     text = "\n".join(lines)
@@ -536,8 +602,8 @@ def _waist_note(regime, price: float) -> str:
     if not wl or not getattr(regime, "below_waist", False):
         return ""
     if price and price < wl:
-        return "（现价在其下，只低吸不追空）"
-    return "（现价贴着腰斩线，只低吸不追空）"
+        return L("（现价在其下，只低吸不追空）", " (price is below it: buy dips only, no chasing shorts)")
+    return L("（现价贴着腰斩线，只低吸不追空）", " (price is hugging it: buy dips only, no chasing shorts)")
 
 _NEAR_BY_TF = {"4h": 0.10, "6h": 0.12, "8h": 0.12, "12h": 0.15, "1d": 0.25, "3d": 0.35, "1w": 0.40, "1M": 0.60}
 
@@ -569,82 +635,144 @@ def indicator_block(
     def dist(x: float) -> float:
         return abs(float(x) / price - 1.0) if price else 0.0
 
-    out: list[str] = ["指标怎么看："]
+    sep, end = L("；", "; "), L("。", ".")
+    out: list[str] = [L("指标怎么看：", "Reading the indicators:")]
     macd_bits = []
     if regime.macd_8h_decel or regime.macd_12h_decel:
-        macd_bits.append("8h/12h MACD 柱在零下缩短，下跌动能减弱" if regime.trade_side != "long" else "8h/12h MACD 归零，回调动能在衰减")
+        macd_bits.append(
+            L("8h/12h MACD 柱在零下缩短，下跌动能减弱", "8h/12h MACD bars shrinking below zero, selling momentum fading")
+            if regime.trade_side != "long"
+            else L("8h/12h MACD 归零，回调动能在衰减", "8h/12h MACD back at zero, pullback momentum fading")
+        )
     if regime.weekly_macd_zero:
-        macd_bits.append("周线 MACD 归零轴，大级别回调接近尾声")
+        macd_bits.append(L("周线 MACD 归零轴，大级别回调接近尾声", "Weekly MACD at the zero line, the bigger pullback is near its end"))
     if regime.accel_2d:
-        macd_bits.append("2 日线 MACD 触零加速")
+        macd_bits.append(L("2 日线 MACD 触零加速", "2D MACD tagging zero and accelerating"))
     if regime.golden_3d or regime.golden_5d:
-        macd_bits.append(f"{'3日' if regime.golden_3d else ''}{'/' if regime.golden_3d and regime.golden_5d else ''}{'5日' if regime.golden_5d else ''}线金叉在形成")
+        g3 = L("3日", "3D") if regime.golden_3d else ""
+        g5 = L("5日", "5D") if regime.golden_5d else ""
+        slash = "/" if regime.golden_3d and regime.golden_5d else ""
+        macd_bits.append(L(f"{g3}{slash}{g5}线金叉在形成", f"{g3}{slash}{g5} golden cross forming"))
     if regime.hollow_daily:
-        macd_bits.append("日线空心阳加速")
+        macd_bits.append(L("日线空心阳加速", "Daily hollow candle, accelerating"))
     if macd_bits:
-        out.append("动能：" + "；".join(macd_bits) + "。")
+        out.append(L("动能：", "Momentum: ") + sep.join(macd_bits) + end)
 
     if regime.boll_4h_mid is not None:
-        line = f"4h BOLL：下轨 {f(regime.boll_4h_lower)} / 中轨 {f(regime.boll_4h_mid)} / 上轨 {f(regime.boll_4h_upper)}"
+        line = L(
+            f"4h BOLL：下轨 {f(regime.boll_4h_lower)} / 中轨 {f(regime.boll_4h_mid)} / 上轨 {f(regime.boll_4h_upper)}",
+            f"4h BOLL: lower {f(regime.boll_4h_lower)} / mid {f(regime.boll_4h_mid)} / upper {f(regime.boll_4h_upper)}",
+        )
         if near(regime.boll_12h_mid):
-            line += f"；12h 中轨 {f(regime.boll_12h_mid)}"
-        out.append(line + "。")
+            line += L(f"；12h 中轨 {f(regime.boll_12h_mid)}", f"; 12h mid {f(regime.boll_12h_mid)}")
+        out.append(line + end)
 
     ma_bits = []
     if near(regime.ema12h_6):
-        ma_bits.append(f"12h EMA6 {f(regime.ema12h_6)}（扎针参考）")
+        ma_bits.append(L(f"12h EMA6 {f(regime.ema12h_6)}（扎针参考）", f"12h EMA6 {f(regime.ema12h_6)} (wick reference)"))
     mids = [x for x in (regime.boll_mid_3d, regime.boll_mid_5d) if near(x)]
     if mids:
-        ma_bits.append(f"{'3日/5日' if len(mids) == 2 else ('3日' if regime.boll_mid_3d in mids else '5日')} BOLL 中轨 {' / '.join(f(x) for x in mids)}（强势盘减仓防守）")
+        if len(mids) == 2:
+            which = L("3日/5日", "3D/5D")
+        else:
+            which = L("3日", "3D") if regime.boll_mid_3d in mids else L("5日", "5D")
+        mids_s = " / ".join(f(x) for x in mids)
+        ma_bits.append(
+            L(
+                f"{which} BOLL 中轨 {mids_s}（强势盘减仓防守）",
+                f"{which} BOLL mid {mids_s} (trim-and-defend line in a strong trend)",
+            )
+        )
     if near(regime.ema5d_6):
-        ma_bits.append(f"5日 EMA6 {f(regime.ema5d_6)}")
+        ma_bits.append(L(f"5日 EMA6 {f(regime.ema5d_6)}", f"5D EMA6 {f(regime.ema5d_6)}"))
     if ma_bits:
-        out.append("均线：" + "；".join(ma_bits) + "。")
+        out.append(L("均线：", "Moving averages: ") + sep.join(ma_bits) + end)
 
     lv = []
     if regime.pullback_618 is not None and (near(regime.pullback_618) or near(regime.pullback_50)):
-        lv.append(f"回踩做多位 {f(regime.pullback_50)} / {f(regime.pullback_618)}")
-    lv.append(f"近支撑 {f(regime.nearest_support)} · 近阻力 {f(regime.nearest_resistance)}")
+        lv.append(
+            L(
+                f"回踩做多位 {f(regime.pullback_50)} / {f(regime.pullback_618)}",
+                f"Pullback long zone {f(regime.pullback_50)} / {f(regime.pullback_618)}",
+            )
+        )
+    lv.append(
+        L(
+            f"近支撑 {f(regime.nearest_support)} · 近阻力 {f(regime.nearest_resistance)}",
+            f"Support {f(regime.nearest_support)} · Resistance {f(regime.nearest_resistance)}",
+        )
+    )
     exts = [x for x in (regime.ext_150, regime.ext_1618) if near(x)]
     if exts:
-        lv.append("本波延伸目标 " + " / ".join(f(x) for x in exts))
+        lv.append(L("本波延伸目标 ", "Extension targets ") + " / ".join(f(x) for x in exts))
     if _round_near(regime, price, thr) and regime.barrier_below and regime.barrier_above:
-        lv.append(f"整数关口 {f(regime.round_level)}（下方屏障 {f(regime.barrier_below[0])}-{f(regime.barrier_below[1])}，上方首压 {f(regime.barrier_above[0])}-{f(regime.barrier_above[1])}）")
-    out.append("点位：" + "；".join(lv) + "。")
+        lv.append(
+            L(
+                f"整数关口 {f(regime.round_level)}（下方屏障 {f(regime.barrier_below[0])}-{f(regime.barrier_below[1])}，上方首压 {f(regime.barrier_above[0])}-{f(regime.barrier_above[1])}）",
+                f"Round number {f(regime.round_level)} (floor {f(regime.barrier_below[0])}-{f(regime.barrier_below[1])}, first ceiling {f(regime.barrier_above[0])}-{f(regime.barrier_above[1])})",
+            )
+        )
+    out.append(L("点位：", "Levels: ") + sep.join(lv) + end)
 
     big = []
+    waist_lbl = L("腰斩线", "50% drawdown line")
     if regime.waist_line is not None:
         if near(regime.waist_line):
-            big.append(f"腰斩线 {f(regime.waist_line)}" + _waist_note(regime, price))
+            big.append(f"{waist_lbl} {f(regime.waist_line)}" + _waist_note(regime, price))
         elif price and price > regime.waist_line:
-            big.append(f"现价在腰斩线 {f(regime.waist_line)} 上方 {dist(regime.waist_line) * 100:.0f}%，牛市结构没坏")
+            pct = dist(regime.waist_line) * 100
+            big.append(
+                L(
+                    f"现价在腰斩线 {f(regime.waist_line)} 上方 {pct:.0f}%，牛市结构没坏",
+                    f"Price is {pct:.0f}% above the 50% drawdown line {f(regime.waist_line)}, bull structure intact",
+                )
+            )
         else:
-            big.append(f"腰斩线 {f(regime.waist_line)}" + _waist_note(regime, price))
+            big.append(f"{waist_lbl} {f(regime.waist_line)}" + _waist_note(regime, price))
     rungs = [x for x in (regime.cycle_382, regime.cycle_500, regime.cycle_618) if x is not None]
     if rungs:
         near_rungs = [x for x in rungs if near(x)]
         if near_rungs:
-            big.append(f"大周期 {f(regime.cycle_low)}→{f(regime.cycle_high)} 反转梯子最近一档 {' / '.join(f(x) for x in near_rungs)}")
+            rs = " / ".join(f(x) for x in near_rungs)
+            big.append(
+                L(
+                    f"大周期 {f(regime.cycle_low)}→{f(regime.cycle_high)} 反转梯子最近一档 {rs}",
+                    f"Cycle {f(regime.cycle_low)}→{f(regime.cycle_high)} retracement ladder, nearest rung {rs}",
+                )
+            )
         else:
             up = [x for x in rungs if price and x > price]
             nxt = min(up) if up else min(rungs, key=dist)
-            big.append(f"大周期反转梯子下一档在 {f(nxt)}（{'上方' if price and nxt > price else '下方'} {dist(nxt) * 100:.0f}%）")
+            above_nxt = bool(price and nxt > price)
+            pct = dist(nxt) * 100
+            big.append(
+                L(
+                    f"大周期反转梯子下一档在 {f(nxt)}（{'上方' if above_nxt else '下方'} {pct:.0f}%）",
+                    f"Next cycle ladder rung at {f(nxt)} ({pct:.0f}% {'above' if above_nxt else 'below'})",
+                )
+            )
     pivots = []
     if regime.monthly_boll_mid is not None:
-        pivots.append(("月线 BOLL 中轨", float(regime.monthly_boll_mid), "（突破即大方向反转）"))
+        pivots.append(
+            (
+                L("月线 BOLL 中轨", "Monthly BOLL mid"),
+                float(regime.monthly_boll_mid),
+                L("（突破即大方向反转）", " (a break flips the big trend)"),
+            )
+        )
     if regime.weekly_boll_upper is not None:
-        pivots.append(("周线 BOLL 上轨", float(regime.weekly_boll_upper), ""))
+        pivots.append((L("周线 BOLL 上轨", "Weekly BOLL upper"), float(regime.weekly_boll_upper), ""))
     near_p = [p_ for p_ in pivots if near(p_[1])]
     far_p = [p_ for p_ in pivots if not near(p_[1])]
     for name, val, note in near_p:
         big.append(f"{name} {f(val)}{note}")
     if far_p and not near_p:
         name, val, note = min(far_p, key=lambda t: dist(t[1]))
-        big.append(f"更远的变盘位：{name} {f(val)}{note}")
+        big.append(L(f"更远的变盘位：{name} {f(val)}{note}", f"Further pivot: {name} {f(val)}{note}"))
     if big:
-        out.append("大周期：" + "；".join(big) + "。")
+        out.append(L("大周期：", "Big picture: ") + sep.join(big) + end)
     if eric_readings:
-        out.append("波段过滤器：" + "；".join(eric_readings) + "。")
+        out.append(L("波段过滤器：", "Band filter: ") + sep.join(eric_readings) + end)
     return out
 
 
@@ -673,9 +801,27 @@ POLISH_SYSTEM_SHORT = """你是一位在币安广场写短评的中文加密货�
 - 全文 220–380 字，3–5 段即可，不重复、不凑字数。只输出正文，不要解释。"""
 
 _CASHTAG_RE = re.compile(r"\$[A-Za-z0-9]{2,12}")
-_CTA_LINE_RE = re.compile(r"^点\s+\$")
+_CTA_LINE_RE = re.compile(r"^(?:点|Tap)\s+\$")
 _CTA_INLINE_RE = re.compile(
     r"点\s+\$[A-Za-z0-9]{2,12}\s+看(?:永续|行情)[^。\n]*。"
+    r"|Tap\s+\$[A-Za-z0-9]{2,12}\s+for\s+(?:perps|the\s+chart)[^\n]*?\.(?=\s|$)"
+)
+_EN_LONG = r"(?i:bullish|long bias|go long|upside|long on a break|buy the dips|buy dips)"
+_EN_SHORT = r"(?i:bearish|short bias|downside|short the bounce|short near|short rallies)"
+_EN_HOLD_ABOVE_LONG = r"hold above\s*[\d.]+\s*to go long"
+_EN_SHORT_BOUNCE = r"short the bounce near"
+_EN_NUM = r"(\d+(?:\.\d+)?)"
+_EN_LONG_CTA = r"(?i:go long|upside|long on a break)"
+_EN_SHORT_CTA = r"(?i:short the bounce|short near|downside)"
+_EN_LONG_LINE = r"(?i:go long|upside\s*\d)"
+_EN_SHORT_LINE = r"(?i:short the bounce near|downside\s*\d)"
+_EN_PRICE_RULES: tuple[tuple[str, bool], ...] = (
+    (rf"(?i:upside)\s*{_EN_NUM}", True),
+    (rf"(?i:downside)\s*{_EN_NUM}", False),
+    (rf"(?i:hold above)\s*{_EN_NUM}", False),
+    (rf"(?i:short the bounce near)\s*{_EN_NUM}", True),
+    (rf"(?i:break above)\s*{_EN_NUM}", True),
+    (rf"(?i:\bhold)\s+{_EN_NUM}", False),
 )
 _COEFFS = {0.236, 0.382, 0.5, 0.618, 0.786, 1.5, 1.618, 2.618}
 
@@ -701,7 +847,7 @@ def _extract_cta_lines(text: str) -> list[str]:
 
 
 def _spot_price_from_text(text: str) -> float | None:
-    m = re.search(r"现价\s*([\d.]+)", text or "")
+    m = re.search(r"现价\s*([\d.]+)", text or "") or re.search(rf"(?i:price)\s*{_EN_NUM}", text or "")
     if not m:
         return None
     try:
@@ -718,7 +864,8 @@ def _trade_side_markers(text: str) -> str | None:
             t,
         )
     )
-    has_short = bool(re.search(r"看跌|偏空|可空|下看|反弹\s*[\d.]+\s*附近可空|高空", t))
+    has_long = has_long or bool(re.search(_EN_LONG, t))
+    has_short = bool(re.search(r"看跌|偏空|可空|下看|反弹\s*[\d.]+\s*附近可空|高空", t) or re.search(_EN_SHORT, t))
     if has_long and not has_short:
         return "long"
     if has_short and not has_long:
@@ -750,23 +897,32 @@ def _cta_price_logic_ok(text: str) -> bool:
     if m := re.search(r"守住\s*([\d.]+)", text):
         if float(m.group(1)) >= price + tol:
             return False
+    for pat, above in _EN_PRICE_RULES:
+        if m := re.search(pat, text):
+            v = float(m.group(1))
+            if (above and v <= price - tol) or (not above and v >= price + tol):
+                return False
     return True
 
 
 def _cta_direction_conflict(text: str) -> bool:
     """同一帖里不能既有「站稳可跟」又有「附近可空」。"""
     t = text or ""
-    long_cta = bool(re.search(r"站稳\s*[\d.]+\s*可跟", t))
-    short_cta = bool(re.search(r"附近可空", t))
+    long_cta = bool(re.search(r"站稳\s*[\d.]+\s*可跟", t) or re.search(_EN_HOLD_ABOVE_LONG, t, re.I))
+    short_cta = bool(re.search(r"附近可空", t) or re.search(_EN_SHORT_BOUNCE, t, re.I))
     return long_cta and short_cta
 
 
 def _direction_consistent(original: str, polished: str) -> bool:
     orig_side = _trade_side_markers(original)
     pol = polished or ""
-    if orig_side == "long" and re.search(r"附近可空|反弹\s*[\d.]+\s*附近可空", pol):
+    if orig_side == "long" and (
+        re.search(r"附近可空|反弹\s*[\d.]+\s*附近可空", pol) or re.search(_EN_SHORT_BOUNCE, pol, re.I)
+    ):
         return False
-    if orig_side == "short" and re.search(r"站稳\s*[\d.]+\s*可跟", pol):
+    if orig_side == "short" and (
+        re.search(r"站稳\s*[\d.]+\s*可跟", pol) or re.search(_EN_HOLD_ABOVE_LONG, pol, re.I)
+    ):
         return False
     pol_side = _trade_side_markers(pol)
     if orig_side and pol_side and orig_side != pol_side:
@@ -818,10 +974,10 @@ def _enforce_square_anchors(polished: str, original: str) -> str:
     if orig_ctas:
         canonical = orig_ctas[-1]
         body = [ln for ln in out.splitlines() if not _CTA_LINE_RE.match(ln.strip())]
-        if "可跟" in canonical or "上看" in canonical or "可追" in canonical:
-            body = [ln for ln in body if not re.search(r"附近可空|下看\s*[\d.]", ln)]
-        elif "可空" in canonical or "下看" in canonical:
-            body = [ln for ln in body if not re.search(r"可跟|上看\s*[\d.]", ln)]
+        if "可跟" in canonical or "上看" in canonical or "可追" in canonical or re.search(_EN_LONG_CTA, canonical):
+            body = [ln for ln in body if not re.search(r"附近可空|下看\s*[\d.]", ln) and not re.search(_EN_SHORT_LINE, ln)]
+        elif "可空" in canonical or "下看" in canonical or re.search(_EN_SHORT_CTA, canonical):
+            body = [ln for ln in body if not re.search(r"可跟|上看\s*[\d.]", ln) and not re.search(_EN_LONG_LINE, ln)]
         body = [_strip_inline_ctas(ln) for ln in body]
         body = [ln for ln in body if ln.strip()]
         out = "\n".join(body).rstrip()
@@ -894,11 +1050,15 @@ def polish_square_text(text: str, *, settings=None, compact: bool = False) -> tu
         return text, "template:disabled"
     try:
         from analyst.llm.chat import _iter_chat_clients
+        from analyst.llm.prompts import language_directive
     except Exception as e:  # noqa: BLE001
         return text, f"template:import({e})"
     want_nums = _numbers(text)
     system = POLISH_SYSTEM_SHORT if compact else POLISH_SYSTEM
     max_out = 420 if compact else 950
+    if is_en():
+        max_out = min(max_out * 2, MAX_POST_LEN)
+    user_msg = text + language_directive()
     start = _time.time()
     for client, model, prov in _iter_chat_clients(s):
         if _time.time() - start > 60:
@@ -906,7 +1066,7 @@ def polish_square_text(text: str, *, settings=None, compact: bool = False) -> tu
         try:
             create_kw: dict = {
                 "model": model,
-                "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}],
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
                 "temperature": 0.7,
                 "max_tokens": 2000,
             }
@@ -1279,7 +1439,7 @@ def maybe_post_level_touch(
             {
                 "price": float(level),
                 "color": "#c77dff",
-                "title": "触碰",
+                "title": L("触碰", "Touch"),
                 "lineStyle": "solid",
             }
         ],
@@ -1333,6 +1493,16 @@ _ERIC_HOOK = {
     "weekly_stop": "{tag} 周线超卖多单止损，认错不扛单",
 }
 
+_ERIC_HOOK_EN = {
+    "weekly_watch": "Weekly oversold is here, one of the most valuable {tag} signals of the past few years",
+    "weekly_entry": "{tag} weekly oversold just turned up, the bounce window is open",
+    "weekly_entry_half": "{tag} weekly oversold plus support/divergence: half size in, waiting for the turn",
+    "daily_oversold": "{tag} daily is in oversold territory, playing the bounce, not betting on a reversal",
+    "weekly_tp1": "{tag} weekly oversold long hit target 1, taking half off by the rules",
+    "weekly_tp2": "{tag} rest of the position closed, this weekly oversold bounce is done",
+    "weekly_stop": "{tag} weekly oversold long stopped out, taking the loss, no bag holding",
+}
+
 
 def compose_eric_square_post(
     *,
@@ -1345,66 +1515,115 @@ def compose_eric_square_post(
 ) -> str:
     """Eric 波段过滤器超卖短文：钩子 + 读数 + 计划点位 + 定性 + 免责 + 标签。"""
     tag = _cashtag(symbol)
-    hook = _ERIC_HOOK.get(kind, "{tag} 波段过滤器触发超卖").format(tag=tag)
+    hooks = _ERIC_HOOK_EN if is_en() else _ERIC_HOOK
+    hook = hooks.get(kind, L("{tag} 波段过滤器触发超卖", "{tag} band filter flags oversold")).format(tag=tag)
+    f = _fmt_price
     lines = [
         hook,
-        f"现价 {_fmt_price(price)}"
-        + (f" · 过滤器读数 {bf_value:+.0f}（≤-40 为超卖）" if bf_value is not None else ""),
+        L(f"现价 {f(price)}", f"Price {f(price)}")
+        + (
+            L(f" · 过滤器读数 {bf_value:+.0f}（≤-40 为超卖）", f" · Filter reading {bf_value:+.0f} (≤-40 is oversold)")
+            if bf_value is not None
+            else ""
+        ),
     ]
     plan = plan or {}
     if kind == "weekly_watch":
-        lines.append("历史上周线超卖后 8 周中位涨幅约 +20%，但首根就买 45% 会先被止损打掉——等读数拐头再进。")
+        lines.append(
+            L(
+                "历史上周线超卖后 8 周中位涨幅约 +20%，但首根就买 45% 会先被止损打掉——等读数拐头再进。",
+                "Historically the median 8-week gain after weekly oversold is about +20%, but buying the first bar gets stopped out 45% of the time. Wait for the reading to turn up.",
+            )
+        )
         if plan.get("episode_low"):
-            lines.append(f"预备止损：段最低 {_fmt_price(plan['episode_low'])} 下方 3%。")
+            lines.append(
+                L(
+                    f"预备止损：段最低 {f(plan['episode_low'])} 下方 3%。",
+                    f"Planned stop: 3% below the swing low {f(plan['episode_low'])}.",
+                )
+            )
     elif kind == "weekly_entry":
         if plan.get("stop") is not None and plan.get("tp1") is not None:
             lines.append(
-                f"计划｜止损 {_fmt_price(plan['stop'])} · 一半止盈 {_fmt_price(plan['tp1'])}"
-                "（或日线超买/周EMA21）· 余仓从高点回撤 20% 离场"
+                L(
+                    f"计划｜止损 {f(plan['stop'])} · 一半止盈 {f(plan['tp1'])}"
+                    "（或日线超买/周EMA21）· 余仓从高点回撤 20% 离场",
+                    f"Plan | Stop {f(plan['stop'])} · Take half at {f(plan['tp1'])}"
+                    " (or daily overbought / weekly EMA21) · Exit the rest on a 20% drawdown from the high",
+                )
             )
-        lines.append("仓位按止损距离反推：每笔只拿权益 2% 去亏。")
+        lines.append(L("仓位按止损距离反推：每笔只拿权益 2% 去亏。", "Size from the stop distance: risk only 2% of equity per trade."))
     elif kind == "weekly_entry_half":
         lines.append(
-            f"Buff 叠够（{plan.get('buff', '—')} 分）但读数还没拐头：先进一半，止损 {_fmt_price(plan.get('stop'))}，拐头再加另一半。"
+            L(
+                f"Buff 叠够（{plan.get('buff', '—')} 分）但读数还没拐头：先进一半，止损 {f(plan.get('stop'))}，拐头再加另一半。",
+                f"Enough confluence ({plan.get('buff', '—')} pts) but the reading hasn't turned: half in now, stop {f(plan.get('stop'))}, add the rest on the turn.",
+            )
         )
-        lines.append("超卖 + 前低支撑 + 底背离，是 Eric 真正的组合进场，不是看到超卖就买。")
+        lines.append(
+            L(
+                "超卖 + 前低支撑 + 底背离，是 Eric 真正的组合进场，不是看到超卖就买。",
+                "Oversold + prior-low support + bullish divergence is Eric's real entry combo, not just buying any oversold print.",
+            )
+        )
     elif kind == "weekly_tp1":
         pnl = plan.get("pnl_pct")
         lines.append(
-            "卖出 1/2"
-            + (f"，这一半 {pnl:+.1f}%" if pnl is not None else "")
-            + f"；止损上移到成本 {_fmt_price(plan.get('stop'))}，余仓从最高价回撤 20% 再走。"
+            L(
+                "卖出 1/2"
+                + (f"，这一半 {pnl:+.1f}%" if pnl is not None else "")
+                + f"；止损上移到成本 {f(plan.get('stop'))}，余仓从最高价回撤 20% 再走。",
+                "Sold 1/2"
+                + (f", {pnl:+.1f}% on this half" if pnl is not None else "")
+                + f"; stop moved to breakeven {f(plan.get('stop'))}, exit the rest on a 20% drawdown from the high.",
+            )
         )
-        lines.append("止盈不是看顶，是把利润锁一半、让另一半免费跑。")
+        lines.append(
+            L(
+                "止盈不是看顶，是把利润锁一半、让另一半免费跑。",
+                "Taking profit isn't calling the top: lock in half, let the other half run for free.",
+            )
+        )
     elif kind == "weekly_tp2":
         pnl = plan.get("pnl_pct")
         first = plan.get("tp1_pnl_pct")
         seg = []
         if first is not None:
-            seg.append(f"第一半 {first:+.1f}%")
+            seg.append(L(f"第一半 {first:+.1f}%", f"First half {first:+.1f}%"))
         if pnl is not None:
-            seg.append(f"余仓 {pnl:+.1f}%")
-        lines.append("全部离场" + ("：" + " · ".join(seg) if seg else "") + "。反弹目标达成，不猜后面是继续涨还是拐头。")
-        lines.append("下一次周线超卖，我们再见。")
+            seg.append(L(f"余仓 {pnl:+.1f}%", f"Rest {pnl:+.1f}%"))
+        lines.append(
+            L(
+                "全部离场" + ("：" + " · ".join(seg) if seg else "") + "。反弹目标达成，不猜后面是继续涨还是拐头。",
+                "Fully out" + (": " + " · ".join(seg) if seg else "") + ". Bounce target reached; not guessing whether it keeps going or rolls over.",
+            )
+        )
+        lines.append(L("下一次周线超卖，我们再见。", "See you at the next weekly oversold."))
     elif kind == "weekly_stop":
         pnl = plan.get("pnl_pct")
         lines.append(
-            "跌破止损"
-            + (f"，本笔 {pnl:+.1f}%" if pnl is not None else "")
-            + "。计划内的亏损，等下一次信号。"
+            L(
+                "跌破止损" + (f"，本笔 {pnl:+.1f}%" if pnl is not None else "") + "。计划内的亏损，等下一次信号。",
+                "Stop hit" + (f", {pnl:+.1f}% on this trade" if pnl is not None else "") + ". A planned loss; waiting for the next signal.",
+            )
         )
     else:
-        lines.append("日线超卖 = 技术性反弹机会，目标看 EMA21/前高；结构破位后的超卖参考价值打折。")
+        lines.append(
+            L(
+                "日线超卖 = 技术性反弹机会，目标看 EMA21/前高；结构破位后的超卖参考价值打折。",
+                "Daily oversold = technical bounce setup, targets EMA21 / prior high; oversold after a structure break is worth less.",
+            )
+        )
     for r in (reasons or [])[:1]:
-        if r and "过滤器" not in r and len(r) < 60:
+        if r and "过滤器" not in r and "filter" not in r.lower() and len(r) < (120 if is_en() else 60):
             lines.append(r)
-    lines.append("做反弹，不赌反转。")
+    lines.append(L("做反弹，不赌反转。", "Trade the bounce, don't bet on a reversal."))
     stop = plan.get("stop")
     tp1 = plan.get("tp1")
     if stop is not None or tp1 is not None:
         lines.append(_cta_line(symbol, "long", defense=stop, target=tp1))
     else:
-        lines.append(f"点 {tag} 看永续，超卖反弹思路见上。")
+        lines.append(L(f"点 {tag} 看永续，超卖反弹思路见上。", f"Tap {tag} for perps: oversold bounce plan above."))
     text = "\n".join(lines)
     if len(text) > MAX_POST_LEN:
         text = text[: MAX_POST_LEN - 1] + "…"
@@ -1457,9 +1676,9 @@ def maybe_post_eric_signal(
     extra: list[dict[str, Any]] = []
     plan = plan or {}
     if plan.get("stop") is not None:
-        extra.append({"price": float(plan["stop"]), "color": "#f6465d", "title": "止损"})
+        extra.append({"price": float(plan["stop"]), "color": "#f6465d", "title": L("止损", "Stop")})
     if plan.get("tp1") is not None:
-        extra.append({"price": float(plan["tp1"]), "color": "#5eb8f0", "title": "目标"})
+        extra.append({"price": float(plan["tp1"]), "color": "#5eb8f0", "title": L("目标", "Target")})
     chart = _chart_for_eric_post(
         symbol=sym,
         timeframe=tf,

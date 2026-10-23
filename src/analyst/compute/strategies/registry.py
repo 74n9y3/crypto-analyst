@@ -15,6 +15,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from analyst.i18n import L
+
+_EN = {
+    "cycle_switch": (
+        "Bull/bear cycle switch (D)",
+        "Halving calendar × 200-day EMA double confirmation; Donchian long-only in bull markets, "
+        "bounce shorts + breakdown shorts (half size) in bear markets; alerts include a volatility-targeted "
+        "position size (backtest MDD -46% → -28%)",
+    ),
+    "xs_momentum": (
+        "Cross-sectional momentum",
+        "Multi-coin momentum ranking: long the top 2, short the weakest in bear markets; "
+        "14-day window (stable across 12–25 days)",
+    ),
+    "funding_carry": (
+        "Funding carry",
+        "Delta neutral: long spot + short perp to collect funding; direction-agnostic, 5-year drawdown <1.1%",
+    ),
+}
+
 
 @dataclass(frozen=True)
 class StrategyInfo:
@@ -56,6 +76,18 @@ STRATEGY_CATALOG: list[StrategyInfo] = [
 
 
 def list_strategies(*, kind: str | None = None) -> list[StrategyInfo]:
-    if kind:
-        return [s for s in STRATEGY_CATALOG if s.kind == kind]
-    return list(STRATEGY_CATALOG)
+    items = [s for s in STRATEGY_CATALOG if s.kind == kind] if kind else list(STRATEGY_CATALOG)
+    out: list[StrategyInfo] = []
+    for s in items:
+        en_name, en_desc = _EN.get(s.id, (s.name, s.description))
+        out.append(
+            StrategyInfo(
+                id=s.id,
+                name=L(s.name, en_name),
+                kind=s.kind,
+                module=s.module,
+                description=L(s.description, en_desc),
+                cli=s.cli,
+            )
+        )
+    return out

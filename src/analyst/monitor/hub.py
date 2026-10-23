@@ -17,6 +17,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from analyst.config import get_settings
+from analyst.i18n import L
 from analyst.compute.strategies.cycle_switch import (
     CycleSwitchConfig,
     build_cycle_regime,
@@ -431,12 +432,16 @@ class MonitorHub:
         if self._telegram_ready() and ok and not self._startup_tg_sent:
             self._startup_tg_sent = True
             tfs = list(self._daemon_timeframes) or ["15m"]
-            await self._notify_telegram_text(
+            await self._notify_telegram_text(L(
                 "✅ Crypto Analyst 常驻盯盘已启动\n"
                 f"workers={len(ok)} · 品种={len(self._daemon_symbols)} · "
                 f"周期={','.join(tfs)}\n"
-                "TG：各币策略点位照推；周期位置日更每天 1 条"
-            )
+                "TG：各币策略点位照推；周期位置日更每天 1 条",
+                "✅ Crypto Analyst always-on monitor started\n"
+                f"workers={len(ok)} · symbols={len(self._daemon_symbols)} · "
+                f"timeframes={','.join(tfs)}\n"
+                "TG: per-coin strategy levels as usual; cycle position update once a day",
+            ))
         return info
 
     def worker_health(self) -> list[dict[str, Any]]:
@@ -521,7 +526,7 @@ class MonitorHub:
             event = {
                 "type": "alert",
                 "rule": str(alert.get("rule") or "spot_signal"),
-                "title": alert.get("title") or "现货雷达",
+                "title": alert.get("title") or L("现货雷达", "Spot radar"),
                 "symbol": _norm_symbol(str(alert.get("pair") or alert.get("symbol") or "")),
                 "timeframe": str(alert.get("timeframe") or "1h"),
                 "direction": direction,
@@ -651,7 +656,7 @@ class MonitorHub:
         # 先 accept，再拉主图；观察列表放到后台，避免排队卡死
         await websocket.accept()
         await websocket.send_json(
-            {"type": "status", "message": f"正在加载 {symbol} {timeframe}…"}
+            {"type": "status", "message": L(f"正在加载 {symbol} {timeframe}…", f"Loading {symbol} {timeframe}…")}
         )
 
         try:
@@ -659,7 +664,7 @@ class MonitorHub:
         except Exception as e:
             logger.exception("ensure worker failed %s", key)
             await websocket.send_json(
-                {"type": "status", "message": f"加载失败：{e}", "level": "error"}
+                {"type": "status", "message": L(f"加载失败：{e}", f"Load failed: {e}"), "level": "error"}
             )
             await websocket.close(code=1011)
             return
@@ -685,7 +690,7 @@ class MonitorHub:
             await websocket.send_json(
                 {
                     "type": "status",
-                    "message": f"已订阅 {symbol} {timeframe} ({market})",
+                    "message": L(f"已订阅 {symbol} {timeframe} ({market})", f"Subscribed {symbol} {timeframe} ({market})"),
                 }
             )
             if get_settings().monitor_rule_market_regime and symbol not in self._regime_live:
@@ -761,7 +766,7 @@ class MonitorHub:
                 await websocket.send_json(
                     {
                         "type": "status",
-                        "message": f"后台观察已接入 {len(attached)} 个交易对",
+                        "message": L(f"后台观察已接入 {len(attached)} 个交易对", f"Background watch attached {len(attached)} pairs"),
                     }
                 )
                 for wsym in attached:
@@ -1119,7 +1124,7 @@ class MonitorHub:
             logger.exception("binance loop crashed %s", key)
             await self._broadcast(
                 worker,
-                {"type": "status", "message": "Binance 流异常，正在重连…", "level": "error"},
+                {"type": "status", "message": L("Binance 流异常，正在重连…", "Binance stream error, reconnecting…"), "level": "error"},
                 alert_also=True,
             )
 
@@ -1382,11 +1387,20 @@ class MonitorHub:
                 worker.key.timeframe,
                 RuleEvent(
                     rule=f"paper_{ev.kind}",
-                    title={"submit": "纸面·挂单", "fill": "纸面·成交", "tp1": "纸面·一半止盈", "stop": "纸面·止损", "exit": "纸面·离场", "expire": "纸面·挂单过期", "fuse": "纸面·日内熔断", "reject": "纸面·拒单"}.get(ev.kind, f"纸面·{ev.kind}"),
+                    title={
+                        "submit": L("纸面·挂单", "Paper · order"),
+                        "fill": L("纸面·成交", "Paper · filled"),
+                        "tp1": L("纸面·一半止盈", "Paper · half take-profit"),
+                        "stop": L("纸面·止损", "Paper · stop"),
+                        "exit": L("纸面·离场", "Paper · exit"),
+                        "expire": L("纸面·挂单过期", "Paper · order expired"),
+                        "fuse": L("纸面·日内熔断", "Paper · daily fuse"),
+                        "reject": L("纸面·拒单", "Paper · rejected"),
+                    }.get(ev.kind, L(f"纸面·{ev.kind}", f"Paper · {ev.kind}")),
                     direction=direction,
                     strength=0.8 if ev.kind in ("fill", "stop", "fuse") else 0.6,
                     price=float(ev.price or 0.0),
-                    reasons=[ev.text, f"权益 {self._paper.equity:,.0f}U"] if self._paper else [ev.text],
+                    reasons=[ev.text, L(f"权益 {self._paper.equity:,.0f}U", f"Equity {self._paper.equity:,.0f} USDT")] if self._paper else [ev.text],
                     marker_time=int(datetime.now(timezone.utc).timestamp()),
                     extras={"paper": ev.to_dict()},
                 ),
@@ -1518,7 +1532,7 @@ class MonitorHub:
         await self._emit_rule_alert(
             worker,
             {
-                "type": "alert", "rule": "square_post", "title": "币安广场已发加速行情",
+                "type": "alert", "rule": "square_post", "title": L("币安广场已发加速行情", "Posted accelerating-move note to Binance Square"),
                 "symbol": sym, "timeframe": worker.key.timeframe, "direction": "long" if chg > 0 else "short",
                 "strength": 0.6, "price": float(bar.close), "pattern": "square_post", "break_level": None,
                 "reasons": [f"4h {chg:+.1f}% · 量 {vol_ratio:.1f}× · id={result.get('id') or '—'}", str(result.get("shareLink") or "—")[:180]],
@@ -1569,7 +1583,7 @@ class MonitorHub:
             {
                 "type": "alert",
                 "rule": "square_post",
-                "title": "币安广场已发 Eric 短文",
+                "title": L("币安广场已发 Eric 短文", "Posted Eric note to Binance Square"),
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "direction": "info",
@@ -1816,16 +1830,16 @@ class MonitorHub:
             alert = {
                 "type": "alert",
                 "rule": "xs_momentum",
-                "title": "横截面动量调仓",
+                "title": L("横截面动量调仓", "Cross-sectional momentum rebalance"),
                 "symbol": worker.key.symbol,
                 "timeframe": worker.key.timeframe,
                 "direction": "info",
                 "strength": 0.75,
                 "price": float(worker.series.candles[-1].close) if worker.series.candles else None,
                 "reasons": [
-                    f"相位 {regime}",
-                    f"目标权重：{' · '.join(weight_lines) or '空仓'}",
-                    f"排名 {top_str}",
+                    L(f"相位 {regime}", f"Phase {regime}"),
+                    L(f"目标权重：{' · '.join(weight_lines) or '空仓'}", f"Target weights: {' · '.join(weight_lines) or 'flat'}"),
+                    L(f"排名 {top_str}", f"Rank {top_str}"),
                 ],
                 "marker_time": marker,
             }
@@ -1873,16 +1887,20 @@ class MonitorHub:
         alert = {
             "type": "alert",
             "rule": "funding_carry",
-            "title": "资金费 carry " + ("信号开启" if active else "信号关闭"),
+            "title": L("资金费 carry 信号开启", "Funding carry signal on") if active else L("资金费 carry 信号关闭", "Funding carry signal off"),
             "symbol": sym,
             "timeframe": worker.key.timeframe,
             "direction": "info",
             "strength": 0.7,
             "price": float(worker.series.candles[-1].close) if worker.series.candles else None,
             "reasons": [
-                f"费率EMA {st.get('ema_rate_pct', 0):+.5f}%/8h "
-                f"(年化{st.get('ema_apr_pct', 0):+.1f}%)",
-                st.get("note") or ("可开 delta 中性 carry" if active else "费率不足，观望"),
+                L(
+                    f"费率EMA {st.get('ema_rate_pct', 0):+.5f}%/8h "
+                    f"(年化{st.get('ema_apr_pct', 0):+.1f}%)",
+                    f"Funding EMA {st.get('ema_rate_pct', 0):+.5f}%/8h "
+                    f"(ann. {st.get('ema_apr_pct', 0):+.1f}%)",
+                ),
+                st.get("note") or (L("可开 delta 中性 carry", "Delta-neutral carry is on") if active else L("费率不足，观望", "Funding too low, stay flat")),
             ],
             "marker_time": marker,
         }
@@ -1967,21 +1985,25 @@ class MonitorHub:
             if st.ema_state != prev.get("ema_state"):
                 up = st.ema_state == "above"
                 alerts.append({
-                    "title": f"{pair} {'站上' if up else '跌破'}"
-                             f"{settings.monitor_ratio_ema_days}日EMA",
+                    "title": L(
+                        f"{pair} {'站上' if up else '跌破'}{settings.monitor_ratio_ema_days}日EMA",
+                        f"{pair} {'above' if up else 'below'} {settings.monitor_ratio_ema_days}d EMA",
+                    ),
                     "direction": "long" if up else "short",
                     "reasons": [
-                        f"汇率 {st.ratio:.6f}（距EMA {st.ema_dist_pct:+.1f}%）",
-                        "资金外溢山寨（山寨季倾向）" if up else "BTC 独强（山寨相对失血）",
+                        L(f"汇率 {st.ratio:.6f}（距EMA {st.ema_dist_pct:+.1f}%）", f"Ratio {st.ratio:.6f} ({st.ema_dist_pct:+.1f}% from EMA)"),
+                        L("资金外溢山寨（山寨季倾向）", "Flow into alts (alt season lean)") if up else L("BTC 独强（山寨相对失血）", "BTC only (alts lagging)"),
                     ],
                 })
             if st.breakout and st.breakout != prev.get("breakout"):
                 hi = st.breakout == "high"
                 alerts.append({
-                    "title": f"{pair} 创{settings.monitor_ratio_break_days}日"
-                             f"{'新高' if hi else '新低'}",
+                    "title": L(
+                        f"{pair} 创{settings.monitor_ratio_break_days}日{'新高' if hi else '新低'}",
+                        f"{pair} {settings.monitor_ratio_break_days}d {'high' if hi else 'low'}",
+                    ),
                     "direction": "long" if hi else "short",
-                    "reasons": [f"汇率 {st.ratio:.6f}（距EMA {st.ema_dist_pct:+.1f}%）"],
+                    "reasons": [L(f"汇率 {st.ratio:.6f}（距EMA {st.ema_dist_pct:+.1f}%）", f"Ratio {st.ratio:.6f} ({st.ema_dist_pct:+.1f}% from EMA)")],
                 })
             for a in alerts:
                 await self._emit_rule_alert(worker, {
@@ -2122,8 +2144,9 @@ class MonitorHub:
         alert = {
             "type": "alert",
             "rule": "cycle_switch",
-            "title": (
-                f"周期策略 · 距转折点 {wolfy_cal.days_to_milestone} 天"
+            "title": L(
+                f"周期策略 · 距转折点 {wolfy_cal.days_to_milestone} 天",
+                f"Cycle strategy · {wolfy_cal.days_to_milestone} days to turning point",
             ),
             "symbol": sym,
             "timeframe": worker.key.timeframe,
@@ -2201,8 +2224,9 @@ class MonitorHub:
         alert = {
             "type": "alert",
             "rule": "cycle_outlook",
-            "title": (
-                f"周期位置 · 距转折点 {outlook.calendar.days_to_milestone} 天"
+            "title": L(
+                f"周期位置 · 距转折点 {outlook.calendar.days_to_milestone} 天",
+                f"Cycle position · {outlook.calendar.days_to_milestone} days to turning point",
             ),
             "symbol": worker.key.symbol,
             "timeframe": worker.key.timeframe,
@@ -2376,8 +2400,8 @@ class MonitorHub:
             marker = int(last_ts.astimezone(timezone.utc).timestamp())
 
         reasons = [
-            f"候选规则: {', '.join(candidate_rules[:4]) or '-'}",
-            f"AI 周期 {result.get('ai_timeframe') or ai_tf}",
+            L(f"候选规则: {', '.join(candidate_rules[:4]) or '-'}", f"Candidate rules: {', '.join(candidate_rules[:4]) or '-'}"),
+            L(f"AI 周期 {result.get('ai_timeframe') or ai_tf}", f"AI timeframe {result.get('ai_timeframe') or ai_tf}"),
         ]
         if rationale:
             reasons.append(rationale[:240])
@@ -2385,7 +2409,7 @@ class MonitorHub:
         alert = {
             "type": "alert",
             "rule": "ai_plan",
-            "title": "AI 盯盘点评",
+            "title": L("AI 盯盘点评", "AI monitor review"),
             "symbol": worker.key.symbol,
             "timeframe": worker.key.timeframe,
             "direction": direction,
@@ -2431,7 +2455,7 @@ class MonitorHub:
         alert = {
             "type": "alert",
             "rule": "ai_confirm_fail",
-            "title": "免费 AI 确认失败",
+            "title": L("免费 AI 确认失败", "Free AI confirmation failed"),
             "symbol": worker.key.symbol,
             "timeframe": worker.key.timeframe,
             "direction": "info",
@@ -2440,8 +2464,8 @@ class MonitorHub:
             "pattern": "ai_confirm_fail",
             "break_level": None,
             "reasons": [
-                f"分析周期 {ai_tf}（仅 Groq，未回落付费）",
-                f"候选: {', '.join(candidate_rules[:4]) or '-'}",
+                L(f"分析周期 {ai_tf}（仅 Groq，未回落付费）", f"Analysis timeframe {ai_tf} (free tier only, no paid fallback)"),
+                L(f"候选: {', '.join(candidate_rules[:4]) or '-'}", f"Candidates: {', '.join(candidate_rules[:4]) or '-'}"),
                 err,
             ],
             "filters_passed": ["ai_confirm_fail"],
@@ -2467,12 +2491,17 @@ class MonitorHub:
             if not claim_ai_fail_tg_alert():
                 logger.info("AI 确认失败已提醒过 TG，跳过 %s", worker.key)
                 return
-            text = (
+            text = L(
                 f"⚠️ 免费 AI 确认失败 · {worker.key.symbol} {worker.key.timeframe}\n"
                 f"分析周期 {ai_tf} · 仅免费层，未回落付费\n"
                 f"候选: {', '.join(candidate_rules[:4]) or '-'}\n"
                 f"{err}\n"
-                f"后续同类失败不再重复推送，恢复成功后再挂才会再提醒。"
+                f"后续同类失败不再重复推送，恢复成功后再挂才会再提醒。",
+                f"⚠️ Free AI confirmation failed · {worker.key.symbol} {worker.key.timeframe}\n"
+                f"Timeframe {ai_tf} · free tier only, no paid fallback\n"
+                f"Candidates: {', '.join(candidate_rules[:4]) or '-'}\n"
+                f"{err}\n"
+                f"No repeat push until a later success, then another failure.",
             )
             logger.warning("AI 确认失败 → TG %s（本次故障只推一次）", worker.key)
             await self._notify_telegram_text(text)
@@ -2550,7 +2579,7 @@ class MonitorHub:
             )
             if out:
                 await self._notify_square_post(
-                    worker, out, title="币安广场已发关键位帖", kind="structure_touch", price=price
+                    worker, out, title=L("币安广场已发关键位帖", "Posted key-level note to Binance Square"), kind="structure_touch", price=price
                 )
 
     async def _maybe_square_regime_posts(
@@ -2583,7 +2612,7 @@ class MonitorHub:
             )
             if out:
                 await self._notify_square_post(
-                    worker, out, title="币安广场已发帖", kind="market_regime", price=price
+                    worker, out, title=L("币安广场已发帖", "Posted to Binance Square"), kind="market_regime", price=price
                 )
         setup_hits = [e for e in events if getattr(e, "rule", None) == "playbook_setup"]
         if setup_hits:
@@ -2599,7 +2628,7 @@ class MonitorHub:
             )
             if out:
                 await self._notify_square_post(
-                    worker, out, title="币安广场已发打法帖", kind="playbook_setup", price=price
+                    worker, out, title=L("币安广场已发打法帖", "Posted playbook to Binance Square"), kind="playbook_setup", price=price
                 )
 
     async def _evaluate_and_alert(self, worker: StreamWorker) -> None:
@@ -2813,7 +2842,7 @@ class MonitorHub:
             take_profit_1=tp1,
             take_profit_2=None,
             rr_ratio=rr,
-            rationale="【模拟告警】仅用于联调页面标记与 Telegram，非实盘信号",
+            rationale=L("【模拟告警】仅用于联调页面标记与 Telegram，非实盘信号", "[Demo alert] page and Telegram wiring only, not a live signal"),
         )
         if marker_ts.tzinfo is None:
             marker_time = int(marker_ts.replace(tzinfo=timezone.utc).timestamp())
@@ -2825,14 +2854,14 @@ class MonitorHub:
             "symbol": symbol,
             "timeframe": timeframe,
             "rule": "demo",
-            "title": "模拟规则告警",
+            "title": L("模拟规则告警", "Demo rule alert"),
             "direction": direction,
             "strength": 0.86,
             "price": price,
             "reasons": [
-                "【模拟】规则命中",
-                "【模拟】量能确认",
-                "【模拟】趋势过滤通过",
+                L("【模拟】规则命中", "[Demo] rule hit"),
+                L("【模拟】量能确认", "[Demo] volume confirmed"),
+                L("【模拟】趋势过滤通过", "[Demo] trend filter passed"),
             ],
             "filters_passed": ["demo"],
             "marker_time": marker_time,

@@ -16,6 +16,7 @@ from analyst.compute.indicators import compute_boll, compute_macd, ema
 from analyst.compute.swing_levels import SwingLevels
 from analyst.compute.structure import Structure
 from analyst.data.fetcher import Candle, CandleSeries
+from analyst.i18n import L
 
 
 @dataclass
@@ -400,7 +401,10 @@ def _pullback_levels(
         ]
         if piv:
             used = piv[-1]
-            note = f"24h振幅{(hi - lo) / hi * 100:.1f}%过大，改用日内回踩低 {used:.6g}"
+            note = L(
+                f"24h振幅{(hi - lo) / hi * 100:.1f}%过大，改用日内回踩低 {used:.6g}",
+                f"24h range {(hi - lo) / hi * 100:.1f}% too wide, using intraday pullback low {used:.6g}",
+            )
     rng = hi - used
     return hi - rng * 0.5, hi - rng * 0.618, used, note
 
@@ -515,9 +519,12 @@ def _accel_2d(daily: CandleSeries | None) -> tuple[bool, str]:
     )
     hit = golden or touch_zero
     if touch_zero:
-        note = f"2d快线触零轴 DIF {prev:.4f}→{now:.4f}"
+        note = L(f"2d快线触零轴 DIF {prev:.4f}→{now:.4f}", f"2d fast line touching zero DIF {prev:.4f}→{now:.4f}")
     elif golden:
-        note = f"2d金叉{'零下' if now < 0 else ''} DIF {now:.4f}"
+        note = L(
+            f"2d金叉{'零下' if now < 0 else ''} DIF {now:.4f}",
+            f"2d golden cross{' below zero' if now < 0 else ''} DIF {now:.4f}",
+        )
     else:
         note = ""
     return hit, note
@@ -583,17 +590,17 @@ def _macd_golden_or_brewing(series: CandleSeries | None) -> tuple[bool, str]:
     prev_d, now_d = macd.series_dif[-2], macd.series_dif[-1]
     prev_e, now_e = macd.series_dea[-2], macd.series_dea[-1]
     if macd.cross_signal == "golden" or (prev_d <= prev_e and now_d > now_e):
-        return True, "金叉"
+        return True, L("金叉", "golden cross")
     brewing = now_d > prev_d and now_d <= now_e and (now_e - now_d) <= max(abs(now_e) * 0.45, 1e-9)
     if brewing:
-        return True, "金叉酝酿"
+        return True, L("金叉酝酿", "golden cross forming")
     return False, ""
 
 
 def _nd_golden(daily: CandleSeries | None, n: int) -> tuple[bool, str]:
     series = _resample_every_n(daily, n, f"{n}d") if daily else None
     hit, kind = _macd_golden_or_brewing(series)
-    return hit, f"{n}d{kind}" if hit else ""
+    return hit, L(f"{n}d{kind}", f"{n}d {kind}") if hit else ""
 
 
 def _hollow_daily_accel(daily: CandleSeries | None) -> bool:
@@ -757,22 +764,29 @@ def compute_market_regime(
     # 回踩位只在现价上方时有意义（价格已经跌破就不是「回踩」了）
     if pb618 is not None and pb618 >= current_price:
         pb50 = pb618 = None
-        pb_note = (pb_note + "；" if pb_note else "") + "现价已低于回踩位"
+        pb_note = (pb_note + L("；", "; ") if pb_note else "") + L("现价已低于回踩位", "price already below the pullback level")
     second_break = swing.touch_count >= 2 and swing.daily_bias == "up"
     weekly_zero = _macd_decel_to_zero(_resample_weekly(daily_series))
     bias = swing.daily_bias
-    ladder = (
+    ladder = L(
         "每突破一个近阻力可加仓一点（略高于阻力更稳），新均价附近设「基本止盈防守」，"
         "加仓那部分先止盈；二次突破已破阻力比回踩补更稳。开仓后先设止损再抓止盈。"
-        "只在浮盈后才加重仓；头仓轻仓。"
+        "只在浮盈后才加重仓；头仓轻仓。",
+        "Add a little on each break of near resistance (slightly above it is safer), set a break-even take-profit guard near the new average, "
+        "and take profit on the added part first; a second break of resistance is safer than adding on a pullback. Set the stop before chasing take profit. "
+        "Only size up while in profit; keep the seed position light. ",
     )
     boll_def = ""
     if boll_5d or boll_3d:
-        boll_def = (
+        boll_def = L(
             f"上行阻力/减仓防守看 5日 BOLL 中 {_fmt(boll_5d)}、"
             f"3日 BOLL 中 {_fmt(boll_3d)}"
             + (f"、5日 EMA6 {_fmt(ema5d6)}" if ema5d6 else "")
-            + "。"
+            + "。",
+            f"Upside resistance / trim-defense: 5d BOLL mid {_fmt(boll_5d)}, "
+            f"3d BOLL mid {_fmt(boll_3d)}"
+            + (f", 5d EMA6 {_fmt(ema5d6)}" if ema5d6 else "")
+            + ". ",
         )
 
     if bias == "down":
@@ -784,7 +798,7 @@ def compute_market_regime(
             primary_series, swing.defense_level, side="short"
         )
         regime = "weak_trend"
-        regime_zh = "弱势盘"
+        regime_zh = L("弱势盘", "Weak market")
         seed_style = "resistance_short"
         add_mode = "none" if below_waist else "breakdown"
         tp_style = "structure_target"
@@ -792,41 +806,64 @@ def compute_market_regime(
         fake_short = False
         if below_waist:
             side = "wait"
-            playbook = (
+            playbook = L(
                 f"已近/跌破腰斩线 {_fmt(waist)}：穷寇莫追，不再加空；"
-                "等反弹到近阻力再考虑头仓空。"
+                "等反弹到近阻力再考虑头仓空。",
+                f"Near/below the halfway line {_fmt(waist)}: don't chase a cornered market, no more shorts; "
+                "wait for a bounce to near resistance before a seed short.",
             )
-            summary = f"弱势但触及腰斩线 {_fmt(waist)}，停止追空。"
+            summary = L(
+                f"弱势但触及腰斩线 {_fmt(waist)}，停止追空。",
+                f"Weak, but touched the halfway line {_fmt(waist)}; stop chasing shorts.",
+            )
             if daily_fade and hourly_ok:
                 side = "long"
                 seed_style = "market"
                 add_mode = "none"
-                playbook = (
+                playbook = L(
                     f"腰斩区 {_fmt(waist)}：日线下跌动能减弱且小时走强，"
-                    "可市价小头仓低吸，仍不追空。"
+                    "可市价小头仓低吸，仍不追空。",
+                    f"Halfway zone {_fmt(waist)}: daily downside momentum fading and hourly strengthening; "
+                    "a small market seed position to buy the dip is OK, still no shorting.",
                 )
-                summary = "腰斩区止跌+小时走强，只做低吸头仓。"
+                summary = L(
+                    "腰斩区止跌+小时走强，只做低吸头仓。",
+                    "Halfway zone holding + hourly strengthening; only a dip-buy seed position.",
+                )
         else:
             if weekly_zero or dec8 or dec12:
                 add_mode = "none"
-            playbook = (
+            playbook = L(
                 "日线转空：反弹近阻力或突破后的新高点小头仓空，不空小回踩；"
                 "跌破最近支撑可加仓；止损放在阻力上方；"
-                "目标先看近支撑，不追到腰斩线以下。"
+                "目标先看近支撑，不追到腰斩线以下。",
+                "Daily turned bearish: small seed short on a bounce to near resistance or at a new high after a breakout, don't short minor pullbacks; "
+                "add on a break of the nearest support; stop above resistance; "
+                "first target is near support, don't chase below the halfway line. ",
             )
             if weekly_zero:
-                playbook += "周线 MACD 归零，大回调将尽，不追空。"
+                playbook += L(
+                    "周线 MACD 归零，大回调将尽，不追空。",
+                    "Weekly MACD back to zero, the big correction is nearly done; don't chase shorts.",
+                )
             elif dec8 or dec12:
-                playbook += "8h/12h MACD 归零下跌减速，最多轻仓高空，优先等支撑低吸。"
+                playbook += L(
+                    "8h/12h MACD 归零下跌减速，最多轻仓高空，优先等支撑低吸。",
+                    "8h/12h MACD returning to zero, selling is slowing; at most a light short on rallies, prefer buying the dip at support.",
+                )
             if defense_broken:
-                summary = (
+                summary = L(
                     f"弱势延续，现价 {_fmt(current_price)} 已压过防守 {_fmt(swing.defense_level)}；"
-                    f"反弹 {_fmt(nearest_resistance)} 附近仍偏空。"
+                    f"反弹 {_fmt(nearest_resistance)} 附近仍偏空。",
+                    f"Weakness continues, price {_fmt(current_price)} is through defense {_fmt(swing.defense_level)}; "
+                    f"still bearish on a bounce near {_fmt(nearest_resistance)}.",
                 )
             else:
-                summary = (
+                summary = L(
                     f"弱势但尚未有效突破防守 {_fmt(swing.defense_level)}；"
-                    f"等反弹 {_fmt(nearest_resistance)} 附近再试空。"
+                    f"等反弹 {_fmt(nearest_resistance)} 附近再试空。",
+                    f"Weak, but defense {_fmt(swing.defense_level)} not decisively broken; "
+                    f"wait for a bounce near {_fmt(nearest_resistance)} to try a short.",
                 )
     elif bias == "up":
         side = "long"
@@ -849,75 +886,113 @@ def compute_market_regime(
             strong = True
         if strong:
             regime = "strong_trend"
-            regime_zh = "强势盘"
+            regime_zh = L("强势盘", "Strong market")
             seed_style = "market"
             add_mode = "none" if near_618 else "breakout"
             tp_style = "new_high"
             playbook = (
-                "强势盘：日周定调+小时走强则市价小头仓，不等低多。"
+                L(
+                    "强势盘：日周定调+小时走强则市价小头仓，不等低多。",
+                    "Strong market: with daily/weekly bias set and hourly strengthening, take a small market seed position instead of waiting for a dip. ",
+                )
                 + ladder
                 + boll_def
-                + "4h 以下回踩若无 1h/4h 顶背离视为诱空，不追空。"
+                + L(
+                    "4h 以下回踩若无 1h/4h 顶背离视为诱空，不追空。",
+                    "Pullbacks below 4h without 1h/4h bearish divergence are bear traps; don't chase shorts. ",
+                )
                 + (
-                    f"周线 BOLL 中轨 {_fmt(weekly_mid)} 是回调极限参考，不是空目标。"
+                    L(
+                        f"周线 BOLL 中轨 {_fmt(weekly_mid)} 是回调极限参考，不是空目标。",
+                        f"Weekly BOLL mid {_fmt(weekly_mid)} is the pullback limit reference, not a short target. ",
+                    )
                     if weekly_mid
                     else ""
                 )
-                + ("已近反弹 0.618，鱼尾不加仓、不追多。" if near_618 else "")
+                + (
+                    L("已近反弹 0.618，鱼尾不加仓、不追多。", "Near the 0.618 bounce, late stage: no adding, no chasing longs.")
+                    if near_618
+                    else ""
+                )
             )
             bits = [
-                f"延续完好，防守 {_fmt(swing.defense_level)} 未破",
-                f"突破 {_fmt(nearest_resistance)} 或昨高 {_fmt(prev_high)} 可加仓"
+                L(
+                    f"延续完好，防守 {_fmt(swing.defense_level)} 未破",
+                    f"Trend intact, defense {_fmt(swing.defense_level)} holding",
+                ),
+                L(
+                    f"突破 {_fmt(nearest_resistance)} 或昨高 {_fmt(prev_high)} 可加仓",
+                    f"add on a break of {_fmt(nearest_resistance)} or yesterday's high {_fmt(prev_high)}",
+                )
                 if not near_618
-                else "鱼尾区不加仓",
+                else L("鱼尾区不加仓", "late stage, no adding"),
             ]
             if accel:
-                bits.append(f"2日线加速（{accel_note}）")
+                bits.append(L(f"2日线加速（{accel_note}）", f"2d accelerating ({accel_note})"))
             if golden_note:
                 bits.append(golden_note)
             if hollow:
-                bits.append("日线空心阳加速")
+                bits.append(L("日线空心阳加速", "daily strong bullish candle acceleration"))
             if resonance:
-                bits.append("大小周期共振市价冲")
+                bits.append(L("大小周期共振市价冲", "multi-timeframe resonance, buy at market"))
             if ltf_zero:
-                bits.append("5m MACD零上现价冲")
+                bits.append(L("5m MACD零上现价冲", "5m MACD above zero, buy at market"))
             if fake_short:
-                bits.append("4h以下回踩诱空")
+                bits.append(L("4h以下回踩诱空", "sub-4h pullback is a bear trap"))
             if second_break:
-                bits.append("二次突破同一阻力，日周托底下无假突破")
+                bits.append(L("二次突破同一阻力，日周托底下无假突破", "second break of the same resistance, no fakeout with daily/weekly support"))
             if weekly_zero:
-                bits.append("周线MACD归零")
-            summary = "；".join(bits) + "。"
+                bits.append(L("周线MACD归零", "weekly MACD back to zero"))
+            summary = L("；", "; ").join(bits) + L("。", ".")
         else:
             regime = "range"
-            regime_zh = "震荡盘"
+            regime_zh = L("震荡盘", "Range market")
             seed_style = "market" if resonance else "pullback"
             add_mode = "none" if near_618 else "pullback"
             tp_style = "intraday_618"
             playbook = (
                 (
-                    "大小周期共振：小时已走强，市价小头仓，等低多容易踏空。"
+                    L(
+                        "大小周期共振：小时已走强，市价小头仓，等低多容易踏空。",
+                        "Multi-timeframe resonance: hourly already strong, take a small market seed position; waiting for a dip risks missing it. ",
+                    )
                     if resonance
-                    else "震荡/延续中断：优先低多；虚破下延一点仍可头仓；"
+                    else L(
+                        "震荡/延续中断：优先低多；虚破下延一点仍可头仓；",
+                        "Range / trend interrupted: prefer buying dips; a seed position is still OK on a slight false break below; ",
+                    )
                 )
-                + "回踩支撑不破可补仓；止盈看当日振幅 0.50–0.618；"
-                "突破上一高点后再切回强势打法。" + ladder + boll_def
+                + L(
+                    "回踩支撑不破可补仓；止盈看当日振幅 0.50–0.618；"
+                    "突破上一高点后再切回强势打法。",
+                    "add if the pullback holds support; take profit at 0.50–0.618 of the daily range; "
+                    "switch back to the strong-market playbook after breaking the prior high. ",
+                )
+                + ladder
+                + boll_def
             )
             parts = []
             if defense_broken:
                 parts.append(
-                    f"跌破防守 {_fmt(swing.defense_level)}，延续上涨中断；"
-                    f"强压参考 {_fmt(swing.rebound_618)}"
+                    L(
+                        f"跌破防守 {_fmt(swing.defense_level)}，延续上涨中断；"
+                        f"强压参考 {_fmt(swing.rebound_618)}",
+                        f"Broke defense {_fmt(swing.defense_level)}, uptrend continuation interrupted; "
+                        f"strong resistance at {_fmt(swing.rebound_618)}",
+                    )
                 )
             if spike:
-                parts.append("近根出现扎针止损，宜等支撑站稳再进")
+                parts.append(L("近根出现扎针止损，宜等支撑站稳再进", "recent wick hit stops; wait for support to hold before entering"))
             if wick:
-                parts.append("支撑虚破后收回，仍可试头仓")
+                parts.append(L("支撑虚破后收回，仍可试头仓", "false break of support recovered; a seed position is still OK"))
             if not parts:
                 parts.append(
-                    f"高周期未成熟或处于波段上半区，宜 {_fmt(nearest_support)} 附近低多"
+                    L(
+                        f"高周期未成熟或处于波段上半区，宜 {_fmt(nearest_support)} 附近低多",
+                        f"Higher timeframe not mature or in the upper half of the swing; buy dips near {_fmt(nearest_support)}",
+                    )
                 )
-            summary = "；".join(parts)
+            summary = L("；", "; ").join(parts)
     else:
         side = "wait"
         defense_broken = False
@@ -925,17 +1000,20 @@ def compute_market_regime(
         continuation = False
         fake_short = False
         regime = "range"
-        regime_zh = "震荡盘"
+        regime_zh = L("震荡盘", "Range market")
         seed_style = "pullback"
         add_mode = "none"
         tp_style = "intraday_618"
-        playbook = (
+        playbook = L(
             "震荡定调：不在中间位追；靠近支撑小仓试多/靠近阻力试空；"
-            "日内反弹 TP 看 0.50–0.618；突破边界再切换趋势打法。"
+            "日内反弹 TP 看 0.50–0.618；突破边界再切换趋势打法。",
+            "Range bias: don't chase mid-range; small long near support / try short near resistance; "
+            "intraday bounce TP at 0.50–0.618; switch to the trend playbook once the range breaks.",
         )
-        summary = (
+        summary = L(
             f"日线震荡；上 {_fmt(nearest_resistance)} / 下 {_fmt(nearest_support)} "
-            f"边界外再动手。"
+            f"边界外再动手。",
+            f"Daily range; act only outside {_fmt(nearest_resistance)} above / {_fmt(nearest_support)} below.",
         )
 
     return MarketRegime(

@@ -8,6 +8,7 @@ from typing import Any
 from analyst.compute.fibonacci import FibLevels, compute_fib, find_long_zone, find_short_zone
 from analyst.compute.structure import Structure, detect_structure
 from analyst.data.fetcher import CandleSeries
+from analyst.i18n import L
 
 # 距关键位多少百分比内视为「贴近」
 NEAR_LEVEL_PCT = 0.35
@@ -134,31 +135,31 @@ def compute_level_context(price: float, snapshot: LevelSnapshot) -> dict[str, An
     if st.trend in ("up", "range"):
         if in_fib_long:
             dip_buy = True
-            zone_reasons.append(f"Fib 回踩区 {long_a:.4g}–{long_b:.4g}")
+            zone_reasons.append(L(f"Fib 回踩区 {long_a:.4g}–{long_b:.4g}", f"Fib pullback zone {long_a:.4g}–{long_b:.4g}"))
         if near_support and supports:
             dip_buy = True
-            zone_reasons.append(f"近支撑 {supports[0]['price']:.4g}")
+            zone_reasons.append(L(f"近支撑 {supports[0]['price']:.4g}", f"Near support {supports[0]['price']:.4g}"))
 
     if st.trend in ("down", "range"):
         if in_fib_short:
             try_short = True
-            zone_reasons.append(f"Fib 反弹区 {short_a:.4g}–{short_b:.4g}")
+            zone_reasons.append(L(f"Fib 反弹区 {short_a:.4g}–{short_b:.4g}", f"Fib bounce zone {short_a:.4g}–{short_b:.4g}"))
         if near_resistance and resistances:
             try_short = True
-            zone_reasons.append(f"近阻力 {resistances[0]['price']:.4g}")
+            zone_reasons.append(L(f"近阻力 {resistances[0]['price']:.4g}", f"Near resistance {resistances[0]['price']:.4g}"))
 
     if dip_buy and try_short:
-        zone_label = "震荡分向"
+        zone_label = L("震荡分向", "Range, both sides")
     elif dip_buy:
-        zone_label = "可低吸"
+        zone_label = L("可低吸", "Buy the dip")
     elif try_short:
-        zone_label = "可试空"
+        zone_label = L("可试空", "Try short")
     elif st.trend == "up":
-        zone_label = "等回踩"
+        zone_label = L("等回踩", "Wait for pullback")
     elif st.trend == "down":
-        zone_label = "等反弹"
+        zone_label = L("等反弹", "Wait for bounce")
     else:
-        zone_label = "观望"
+        zone_label = L("观望", "Wait")
 
     return {
         "price": price,

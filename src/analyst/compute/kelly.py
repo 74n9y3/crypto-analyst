@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from analyst.i18n import L
+
 
 @dataclass(frozen=True)
 class KellySize:
@@ -59,11 +61,17 @@ def suggest_position(
     risk_pct = min(capped * 100.0, max_risk_per_trade_pct)
 
     if full <= 0:
-        note = "期望为负或参数无效，建议观望、不开仓。"
+        note = L("期望为负或参数无效，建议观望、不开仓。", "Negative expectancy or invalid inputs; stay flat, no position.")
     elif capped < scaled:
-        note = f"Kelly×{kelly_scale:g}={scaled:.2%} 触达上限 {max_fraction:.0%}，已夹紧。"
+        note = L(
+            f"Kelly×{kelly_scale:g}={scaled:.2%} 触达上限 {max_fraction:.0%}，已夹紧。",
+            f"Kelly×{kelly_scale:g}={scaled:.2%} hit the {max_fraction:.0%} cap; clamped.",
+        )
     else:
-        note = f"采用 {kelly_scale:g}×Kelly（加密合约常用更保守档）。"
+        note = L(
+            f"采用 {kelly_scale:g}×Kelly（加密合约常用更保守档）。",
+            f"Using {kelly_scale:g}×Kelly (the more conservative tier common for crypto perps).",
+        )
 
     return KellySize(
         win_rate=win_rate,

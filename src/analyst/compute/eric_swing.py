@@ -30,6 +30,7 @@ from typing import Any
 from analyst.compute.band_filter import band_filter_series, compute_band_filter, hysteresis_states
 from analyst.compute.indicators import ema
 from analyst.data.fetcher import CandleSeries
+from analyst.i18n import L
 
 STOP_PAD = 0.03          # 止损：段最低价下方 3%
 MAX_STOP_DIST = 0.20     # 止损距离上限：拐头时若已反弹很多，段低太远，改为入场 −20%（BTC/ETH 回测更好）
@@ -125,17 +126,25 @@ def band_readings(series_by_tf: dict[str, CandleSeries | None]) -> list[str]:
         bf = compute_band_filter(s)
         if not bf:
             continue
-        st = {"oversold": "超卖", "overbought": "超买", "neutral": "中性"}[bf.state]
+        st = {
+            "oversold": L("超卖", "oversold"),
+            "overbought": L("超买", "overbought"),
+            "neutral": L("中性", "neutral"),
+        }[bf.state]
         extra = ""
         if tf == "1w" and bf.ob_gate:
-            extra = f" · Z26={bf.channel_z:.2f}" + ("（加速区）" if bf.state == "overbought" else "")
+            extra = f" · Z26={bf.channel_z:.2f}" + (L("（加速区）", " (accel)") if bf.state == "overbought" else "")
         if bf.turned_up:
-            extra += " · 拐头↑"
+            extra += L(" · 拐头↑", " · turned ↑")
         if bf.turned_down:
-            extra += " · 拐头↓"
+            extra += L(" · 拐头↓", " · turned ↓")
         if bf.streak >= 2:
-            extra += f" · 第{bf.streak}次"
-        out.append(f"{name.get(tf, tf)} BF {bf.value:+.1f}（{st}）{extra}")
+            extra += L(f" · 第{bf.streak}次", f" · #{bf.streak}")
+        tf_name = L(name.get(tf, tf), {"日线": "Daily", "周线": "Weekly", "月线": "Monthly"}.get(name.get(tf, tf), tf))
+        out.append(L(
+            f"{name.get(tf, tf)} BF {bf.value:+.1f}（{st}）{extra}",
+            f"{tf_name} BF {bf.value:+.1f} ({st}){extra}",
+        ))
     return out
 
 
@@ -144,7 +153,10 @@ def _position_hint(entry: float, stop: float, risk_pct: float) -> str:
     if risk <= 0:
         return ""
     size = risk_pct / 100.0 / risk * 100.0
-    return f"止损距离 {risk*100:.1f}% → 每笔风险 {risk_pct:g}% 权益 ≈ 仓位 {size:.0f}% 权益"
+    return L(
+        f"止损距离 {risk*100:.1f}% → 每笔风险 {risk_pct:g}% 权益 ≈ 仓位 {size:.0f}% 权益",
+        f"Stop distance {risk*100:.1f}% → {risk_pct:g}% equity risk ≈ {size:.0f}% position",
+    )
 
 
 def advance(
@@ -188,13 +200,19 @@ def advance(
             events.append(
                 SwingEvent(
                     kind="watch",
-                    title="Eric 周线超卖 · 进入观察",
+                    title=L("Eric 周线超卖 · 进入观察", "Eric weekly oversold · watch"),
                     direction="info",
                     price=closes[-1],
                     reasons=[
-                        f"周线波段过滤器 {X[-1]:+.1f} ≤ −40，进入超卖状态",
-                        "不在首根进场（回测：早 1–3 周、45% 先被止损）",
-                        f"等周线读数拐头向上再开仓；预备止损 ≈ 段最低 {_fmt(st['episode_low'])} × 0.97",
+                        L(
+                            f"周线波段过滤器 {X[-1]:+.1f} ≤ −40，进入超卖状态",
+                            f"Weekly band filter {X[-1]:+.1f} ≤ −40, entered oversold",
+                        ),
+                        L("不在首根进场（回测：早 1–3 周、45% 先被止损）", "Don't enter on the first bar (backtest: 1–3 weeks early, 45% stopped out)"),
+                        L(
+                            f"等周线读数拐头向上再开仓；预备止损 ≈ 段最低 {_fmt(st['episode_low'])} × 0.97",
+                            f"Wait for the weekly reading to turn up; prep stop ≈ episode low {_fmt(st['episode_low'])} × 0.97",
+                        ),
                         *readings,
                     ],
                     plan={"stage": "watch", "episode_low": st["episode_low"]},
@@ -215,8 +233,11 @@ def advance(
                     entry = (float(st["entry"]) + px) / 2.0
                     stop = float(st["stop"])
                     st.update(entry=entry, size=1.0, tp1_level=entry * (1 + TP1_GAIN), peak=max(float(st.get("peak") or px), px))
-                    title = "Eric 周线超卖 · 拐头确认，加满另一半"
-                    first = f"半仓成本 {_fmt(st.get('entry1'))} + 本周 {_fmt(px)} → 均价 {_fmt(entry)}"
+                    title = L("Eric 周线超卖 · 拐头确认，加满另一半", "Eric weekly oversold · turn confirmed, fill the other half")
+                    first = L(
+                        f"半仓成本 {_fmt(st.get('entry1'))} + 本周 {_fmt(px)} → 均价 {_fmt(entry)}",
+                        f"Half-size cost {_fmt(st.get('entry1'))} + this week {_fmt(px)} → avg {_fmt(entry)}",
+                    )
                 else:
                     entry = px
                     stop = min(float(st["episode_low"]) * (1 - STOP_PAD), entry * 0.995)
@@ -225,8 +246,11 @@ def advance(
                         phase="long", entry_ts=w_ts, entry=entry, entry1=entry, size=1.0, stop=stop, init_stop=stop,
                         tp1_level=entry * (1 + TP1_GAIN), peak=entry, tp1_done=False,
                     )
-                    title = "Eric 周线超卖 · 拐头确认，建议开多"
-                    first = f"止损 {_fmt(stop)}（段最低 {_fmt(st['episode_low'])} − 3%，上限入场 −20%）"
+                    title = L("Eric 周线超卖 · 拐头确认，建议开多", "Eric weekly oversold · turn confirmed, suggest long")
+                    first = L(
+                        f"止损 {_fmt(stop)}（段最低 {_fmt(st['episode_low'])} − 3%，上限入场 −20%）",
+                        f"Stop {_fmt(stop)} (episode low {_fmt(st['episode_low'])} − 3%, cap entry −20%)",
+                    )
                 events.append(
                     SwingEvent(
                         kind="entry",
@@ -234,12 +258,25 @@ def advance(
                         direction="long",
                         price=px,
                         reasons=[
-                            (f"周线读数拐头 {X[-2]:+.1f} → {X[-1]:+.1f}（仍在超卖区）" if turned else f"周线读数退出超卖区（{X[-2]:+.1f} → {X[-1]:+.1f}）"),
+                            (
+                                L(
+                                    f"周线读数拐头 {X[-2]:+.1f} → {X[-1]:+.1f}（仍在超卖区）",
+                                    f"Weekly reading turned {X[-2]:+.1f} → {X[-1]:+.1f} (still oversold)",
+                                )
+                                if turned
+                                else L(
+                                    f"周线读数退出超卖区（{X[-2]:+.1f} → {X[-1]:+.1f}）",
+                                    f"Weekly reading left oversold ({X[-2]:+.1f} → {X[-1]:+.1f})",
+                                )
+                            ),
                             first,
-                            f"第一半止盈：{_fmt(st['tp1_level'])}（均价 +25%）/ 周线 EMA21 且 ≥+8% / 日线超买 且 ≥+5%",
-                            "第二半：止损上移成本后，从最高价回撤 20% 离场；最长持有 52 周",
+                            L(
+                                f"第一半止盈：{_fmt(st['tp1_level'])}（均价 +25%）/ 周线 EMA21 且 ≥+8% / 日线超买 且 ≥+5%",
+                                f"First-half TP: {_fmt(st['tp1_level'])} (avg +25%) / weekly EMA21 and ≥+8% / daily overbought and ≥+5%",
+                            ),
+                            L("第二半：止损上移成本后，从最高价回撤 20% 离场；最长持有 52 周", "Second half: stop to breakeven, then trail 20% off the high; max hold 52 weeks"),
                             _position_hint(entry, stop, risk_pct),
-                            "定性：做反弹，不赌反转（Eric）",
+                            L("定性：做反弹，不赌反转（Eric）", "Note: bounce trade, not a reversal bet (Eric)"),
                             *readings,
                         ],
                         plan={
@@ -263,14 +300,20 @@ def advance(
                     events.append(
                         SwingEvent(
                             kind="entry_half",
-                            title="Eric 周线超卖 · Buff 达标，先进半仓",
+                            title=L("Eric 周线超卖 · Buff 达标，先进半仓", "Eric weekly oversold · Buff met, start half size"),
                             direction="long",
                             price=entry,
                             reasons=[
-                                f"Buff={buff}≥{BUFF_HALF_MIN}：{' + '.join(tags) or '—'}",
-                                f"周线读数 {X[-1]:+.1f} 仍在超卖区、未拐头 → 半仓；拐头后加满另一半",
-                                f"止损 {_fmt(stop)}（段最低 −3%，上限 −20%）",
-                                _position_hint(entry, stop, risk_pct) + "（本次先用一半）",
+                                L(
+                                    f"Buff={buff}≥{BUFF_HALF_MIN}：{' + '.join(tags) or '—'}",
+                                    f"Buff={buff}≥{BUFF_HALF_MIN}: {' + '.join(tags) or '—'}",
+                                ),
+                                L(
+                                    f"周线读数 {X[-1]:+.1f} 仍在超卖区、未拐头 → 半仓；拐头后加满另一半",
+                                    f"Weekly reading {X[-1]:+.1f} still oversold, not turned → half size; fill after the turn",
+                                ),
+                                L(f"止损 {_fmt(stop)}（段最低 −3%，上限 −20%）", f"Stop {_fmt(stop)} (episode low −3%, cap −20%)"),
+                                _position_hint(entry, stop, risk_pct) + L("（本次先用一半）", " (half size this time)"),
                                 *readings,
                             ],
                             plan={"stage": "entry_half", "entry": entry, "stop": stop, "tp1": st["tp1_level"], "size": 0.5, "buff": buff},
@@ -284,10 +327,10 @@ def advance(
             events.append(
                 SwingEvent(
                     kind="watch",
-                    title="Eric 周线再次超卖（持仓中）",
+                    title=L("Eric 周线再次超卖（持仓中）", "Eric weekly oversold again (in position)"),
                     direction="info",
                     price=closes[-1],
-                    reasons=[f"周线读数 {X[-1]:+.1f}，当前止损 {_fmt(st.get('stop'))}", *readings],
+                    reasons=[L(f"周线读数 {X[-1]:+.1f}，当前止损 {_fmt(st.get('stop'))}", f"Weekly reading {X[-1]:+.1f}, current stop {_fmt(st.get('stop'))}"), *readings],
                     plan={"stage": st["phase"]},
                     marker_time=w_ts,
                 )
@@ -308,7 +351,11 @@ def advance(
 
     if d_lo <= stop:
         kind = "stop"
-        title = "Eric 波段 · 止损离场" if not st.get("tp1_done") else "Eric 波段 · 余仓保本离场"
+        title = (
+            L("Eric 波段 · 止损离场", "Eric swing · stopped out")
+            if not st.get("tp1_done")
+            else L("Eric 波段 · 余仓保本离场", "Eric swing · remainder exited at breakeven")
+        )
         pnl = (stop / entry - 1) * 100
         events.append(
             SwingEvent(
@@ -316,7 +363,14 @@ def advance(
                 title=title,
                 direction="short",
                 price=stop,
-                reasons=[f"日线最低 {_fmt(d_lo)} ≤ 止损 {_fmt(stop)}", f"本笔 {'余仓' if st.get('tp1_done') else '全仓'} {pnl:+.1f}%", *readings],
+                reasons=[
+                    L(f"日线最低 {_fmt(d_lo)} ≤ 止损 {_fmt(stop)}", f"Daily low {_fmt(d_lo)} ≤ stop {_fmt(stop)}"),
+                    L(
+                        f"本笔 {'余仓' if st.get('tp1_done') else '全仓'} {pnl:+.1f}%",
+                        f"This trade {'remainder' if st.get('tp1_done') else 'full size'} {pnl:+.1f}%",
+                    ),
+                    *readings,
+                ],
                 plan={"stage": "closed", "reason": "stop", "pnl_pct": pnl},
                 marker_time=d_ts,
             )
@@ -328,12 +382,21 @@ def advance(
     if not st.get("tp1_done"):
         reasons_hit: list[str] = []
         if d_hi >= float(st["tp1_level"]):
-            reasons_hit.append(f"日线最高 {_fmt(d_hi)} ≥ 目标 {_fmt(st['tp1_level'])}（+25%）")
+            reasons_hit.append(L(
+                f"日线最高 {_fmt(d_hi)} ≥ 目标 {_fmt(st['tp1_level'])}（+25%）",
+                f"Daily high {_fmt(d_hi)} ≥ target {_fmt(st['tp1_level'])} (+25%)",
+            ))
         if d_close >= e21[-1] and d_close >= entry * (1 + TP1_EMA21_MIN_GAIN):
-            reasons_hit.append(f"日线收盘 {_fmt(d_close)} ≥ 周线 EMA21 {_fmt(e21[-1])} 且盈利 ≥8%")
+            reasons_hit.append(L(
+                f"日线收盘 {_fmt(d_close)} ≥ 周线 EMA21 {_fmt(e21[-1])} 且盈利 ≥8%",
+                f"Daily close {_fmt(d_close)} ≥ weekly EMA21 {_fmt(e21[-1])} and ≥+8%",
+            ))
         dbf = compute_band_filter(daily)
         if dbf and dbf.entered_overbought and d_close >= entry * (1 + TP1_DAILY_OB_MIN_GAIN):
-            reasons_hit.append(f"日线波段过滤器进入超买 {dbf.value:+.1f} 且盈利 ≥5%")
+            reasons_hit.append(L(
+                f"日线波段过滤器进入超买 {dbf.value:+.1f} 且盈利 ≥5%",
+                f"Daily band filter entered overbought {dbf.value:+.1f} and ≥+5%",
+            ))
         if reasons_hit:
             px = float(st["tp1_level"]) if d_hi >= float(st["tp1_level"]) else d_close
             st["tp1_done"] = True
@@ -343,13 +406,19 @@ def advance(
             events.append(
                 SwingEvent(
                     kind="tp1",
-                    title="Eric 波段 · 建议卖出一半（第一止盈）",
+                    title=L("Eric 波段 · 建议卖出一半（第一止盈）", "Eric swing · sell half (first take-profit)"),
                     direction="short",
                     price=px,
                     reasons=[
                         *reasons_hit,
-                        f"卖出 1/2，盈利 {(px/entry-1)*100:+.1f}%；止损上移到成本 {_fmt(entry)}",
-                        f"余仓：从最高价回撤 {int(TP2_TRAIL*100)}% 离场（当前最高 {_fmt(st['peak'])}）",
+                        L(
+                            f"卖出 1/2，盈利 {(px/entry-1)*100:+.1f}%；止损上移到成本 {_fmt(entry)}",
+                            f"Sell 1/2, P&L {(px/entry-1)*100:+.1f}%; stop to breakeven {_fmt(entry)}",
+                        ),
+                        L(
+                            f"余仓：从最高价回撤 {int(TP2_TRAIL*100)}% 离场（当前最高 {_fmt(st['peak'])}）",
+                            f"Remainder: trail {int(TP2_TRAIL*100)}% off the high (peak {_fmt(st['peak'])})",
+                        ),
                         *readings,
                     ],
                     plan={"stage": "runner", "tp1_price": px, "stop": st["stop"], "trail_from": st["peak"]},
@@ -370,12 +439,18 @@ def advance(
         events.append(
             SwingEvent(
                 kind="tp2",
-                title="Eric 波段 · 余仓离场（第二止盈）",
+                title=L("Eric 波段 · 余仓离场（第二止盈）", "Eric swing · remainder exit (second take-profit)"),
                 direction="short",
                 price=d_close,
                 reasons=[
-                    f"日线收盘 {_fmt(d_close)} 从最高 {_fmt(st['peak'])} 回撤 ≥{int(TP2_TRAIL*100)}%",
-                    f"余仓 {pnl:+.1f}%；第一半 {(float(st['tp1_price'])/entry-1)*100:+.1f}%",
+                    L(
+                        f"日线收盘 {_fmt(d_close)} 从最高 {_fmt(st['peak'])} 回撤 ≥{int(TP2_TRAIL*100)}%",
+                        f"Daily close {_fmt(d_close)} trailed ≥{int(TP2_TRAIL*100)}% from peak {_fmt(st['peak'])}",
+                    ),
+                    L(
+                        f"余仓 {pnl:+.1f}%；第一半 {(float(st['tp1_price'])/entry-1)*100:+.1f}%",
+                        f"Remainder {pnl:+.1f}%; first half {(float(st['tp1_price'])/entry-1)*100:+.1f}%",
+                    ),
                     *readings,
                 ],
                 plan={"stage": "closed", "reason": "trail", "pnl_pct": pnl},
@@ -397,19 +472,31 @@ def _status_event(st: dict[str, Any], price: float, ts: int, readings: list[str]
     entry = float(st["entry"])
     stop = float(st["stop"])
     pnl = (price / entry - 1) * 100
-    lines = [f"浮盈 {pnl:+.1f}%（均价 {_fmt(entry)}，仓位 {float(st.get('size') or 1.0):.0%}）"]
+    lines = [L(
+        f"浮盈 {pnl:+.1f}%（均价 {_fmt(entry)}，仓位 {float(st.get('size') or 1.0):.0%}）",
+        f"Open P&L {pnl:+.1f}% (avg {_fmt(entry)}, size {float(st.get('size') or 1.0):.0%})",
+    )]
     dist = price / stop - 1
-    lines.append(f"距{'保本' if st.get('tp1_done') else ''}止损 {_fmt(stop)}：{dist*100:.1f}%")
+    lines.append(L(
+        f"距{'保本' if st.get('tp1_done') else ''}止损 {_fmt(stop)}：{dist*100:.1f}%",
+        f"{'Breakeven s' if st.get('tp1_done') else 'S'}top {_fmt(stop)}: {dist*100:.1f}% away",
+    ))
     near = dist <= NEAR_PCT
     if st.get("tp1_done"):
         trail = float(st.get("trail_level") or float(st["peak"]) * (1 - TP2_TRAIL))
         d2 = price / trail - 1
-        lines.append(f"距跟踪离场线 {_fmt(trail)}：{d2*100:.1f}%（最高 {_fmt(st['peak'])}）")
+        lines.append(L(
+            f"距跟踪离场线 {_fmt(trail)}：{d2*100:.1f}%（最高 {_fmt(st['peak'])}）",
+            f"Trail exit {_fmt(trail)}: {d2*100:.1f}% away (peak {_fmt(st['peak'])})",
+        ))
         near = near or d2 <= NEAR_PCT
     else:
-        lines.append(f"距第一止盈 {_fmt(st['tp1_level'])}：{(float(st['tp1_level'])/price-1)*100:.1f}%")
+        lines.append(L(
+            f"距第一止盈 {_fmt(st['tp1_level'])}：{(float(st['tp1_level'])/price-1)*100:.1f}%",
+            f"First TP {_fmt(st['tp1_level'])}: {(float(st['tp1_level'])/price-1)*100:.1f}% away",
+        ))
     kind = "near" if near else "status"
-    title = "Eric 波段 · ⚠️ 临近止损/离场线" if near else "Eric 波段 · 持仓状态"
+    title = L("Eric 波段 · ⚠️ 临近止损/离场线", "Eric swing · ⚠️ near stop / exit") if near else L("Eric 波段 · 持仓状态", "Eric swing · position status")
     return SwingEvent(
         kind=kind, title=title, direction="info", price=price,
         reasons=[*lines, *readings],
@@ -430,10 +517,21 @@ def check_mark_stop(state: dict[str, Any] | None, mark: float, now_ts: int) -> t
     pnl = (stop / entry - 1) * 100
     ev = SwingEvent(
         kind="stop",
-        title="Eric 波段 · 止损离场（实时标记价）" if not st.get("tp1_done") else "Eric 波段 · 余仓保本离场（实时标记价）",
+        title=(
+            L("Eric 波段 · 止损离场（实时标记价）", "Eric swing · stopped out (live mark)")
+            if not st.get("tp1_done")
+            else L("Eric 波段 · 余仓保本离场（实时标记价）", "Eric swing · remainder exited at breakeven (live mark)")
+        ),
         direction="short",
         price=float(mark),
-        reasons=[f"标记价 {_fmt(float(mark))} ≤ 止损 {_fmt(stop)}", f"本笔 {'余仓' if st.get('tp1_done') else '全仓'} {pnl:+.1f}%（按止损价）", "实时触发，不等日线收盘"],
+        reasons=[
+            L(f"标记价 {_fmt(float(mark))} ≤ 止损 {_fmt(stop)}", f"Mark {_fmt(float(mark))} ≤ stop {_fmt(stop)}"),
+            L(
+                f"本笔 {'余仓' if st.get('tp1_done') else '全仓'} {pnl:+.1f}%（按止损价）",
+                f"This trade {'remainder' if st.get('tp1_done') else 'full size'} {pnl:+.1f}% (at stop)",
+            ),
+            L("实时触发，不等日线收盘", "Live trigger, does not wait for the daily close"),
+        ],
         plan={"stage": "closed", "reason": "stop_mark", "pnl_pct": pnl},
         marker_time=now_ts,
     )
@@ -445,10 +543,10 @@ def _timeout(st: dict[str, Any], price: float, ts: int, readings: list[str]) -> 
     pnl = (price / entry - 1) * 100
     return SwingEvent(
         kind="tp2",
-        title="Eric 波段 · 持有满 52 周，建议离场",
+        title=L("Eric 波段 · 持有满 52 周，建议离场", "Eric swing · held 52 weeks, suggest exit"),
         direction="short",
         price=price,
-        reasons=[f"超过最长持有期；当前 {pnl:+.1f}%", *readings],
+        reasons=[L(f"超过最长持有期；当前 {pnl:+.1f}%", f"Past max hold; now {pnl:+.1f}%"), *readings],
         plan={"stage": "closed", "reason": "timeout", "pnl_pct": pnl},
         marker_time=ts,
     )

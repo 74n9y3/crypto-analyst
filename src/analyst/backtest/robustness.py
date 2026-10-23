@@ -19,6 +19,7 @@ from analyst.backtest.classic import (
     simulate,
 )
 from analyst.data.fetcher import Candle
+from analyst.i18n import L
 
 _EULER = 0.5772156649015329
 # 指南：连续样本外通过不少于 6 窗
@@ -132,7 +133,7 @@ def deflated_sharpe(returns: list[float], n_trials: int, *, periods_per_year: in
         "sr_annual": None,
         "sr_benchmark": None,
         "n_trials": n_trials,
-        "verdict": "样本不足",
+        "verdict": L("样本不足", "Insufficient sample"),
     }
     if t < 30:
         return empty
@@ -140,7 +141,7 @@ def deflated_sharpe(returns: list[float], n_trials: int, *, periods_per_year: in
     var = sum((r - mu) ** 2 for r in clean) / (t - 1)
     sd = math.sqrt(var)
     if sd <= 0:
-        empty["verdict"] = "收益没有波动"
+        empty["verdict"] = L("收益没有波动", "Returns have no variance")
         return empty
     sr = mu / sd
     m3 = sum((r - mu) ** 3 for r in clean) / t
@@ -178,7 +179,7 @@ def cscv_pbo(returns_matrix: list[list[float]], n_splits: int = 8) -> dict:
     """
     n_strat = len(returns_matrix)
     if n_strat < 2:
-        return {"pbo": None, "n_splits": n_splits, "n_strategies": n_strat, "verdict": "候选不足"}
+        return {"pbo": None, "n_splits": n_splits, "n_strategies": n_strat, "verdict": L("候选不足", "Not enough candidates")}
     length = min(len(row) for row in returns_matrix)
     splits = n_splits if n_splits % 2 == 0 else n_splits - 1
     while splits >= 4 and length // splits < 20:
@@ -188,7 +189,7 @@ def cscv_pbo(returns_matrix: list[list[float]], n_splits: int = 8) -> dict:
             "pbo": None,
             "n_splits": splits,
             "n_strategies": n_strat,
-            "verdict": "样本不足",
+            "verdict": L("样本不足", "Insufficient sample"),
         }
     fold = length // splits
     blocks: list[list[float]] = []
@@ -282,7 +283,7 @@ def robustness_bundle(
     pbo = cscv_pbo(trials) if trials else {
         "pbo": None,
         "n_strategies": 1,
-        "verdict": "未计算",
+        "verdict": L("未计算", "Not computed"),
         "reason": trial_note,
     }
     doubled = next((row for row in sensitivity if row["scale"] == 2.0), None)
@@ -307,7 +308,7 @@ def _trial_matrix(
     regime: dict | None,
 ) -> tuple[list[list[float]], str]:
     if strategy != "cycle_switch" or regime is None:
-        return [], "单一路径，没有参数邻域，不算 PBO"
+        return [], L("单一路径，没有参数邻域，不算 PBO", "Single path with no parameter neighborhood; PBO not computed")
     from analyst.compute.strategies.cycle_switch import positions_cycle_switch
 
     grid: list[tuple[int, int, bool]] = []
@@ -337,7 +338,7 @@ def _trial_matrix(
         )
         matrix.append(rep.bar_returns)
     if base_returns and matrix and len(base_returns) != len(matrix[0]):
-        return [], "参数邻域与基准收益长度不一致"
+        return [], L("参数邻域与基准收益长度不一致", "Parameter neighborhood length does not match baseline returns")
     return matrix, ""
 
 
@@ -365,7 +366,7 @@ def _wf_payload(windows: list[dict], oos_days: int, step_days: int) -> dict:
     n_pass = sum(flags)
     consec = _max_consecutive(flags)
     if n < 3:
-        verdict = "样本窗口不足"
+        verdict = L("样本窗口不足", "Not enough windows")
     elif consec >= CONSECUTIVE_PASS:
         verdict = "PASS"
     elif n_pass >= n * 0.5:

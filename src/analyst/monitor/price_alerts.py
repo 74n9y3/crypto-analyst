@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from analyst.i18n import L
+
 KINDS = ("cross", "above", "below", "pct_change", "abs_change")
 DIRECTIONS = ("up", "down", "any")
 # 1s 标记价，窗口最长记 6 小时
@@ -311,18 +313,18 @@ def _event(alert: PriceAlert, price: float, now: float, hit: dict[str, Any]) -> 
 def describe_alert(alert: PriceAlert) -> str:
     base = alert.symbol.split("/")[0]
     if alert.kind == "above" and alert.price is not None:
-        text = f"{base} 上穿 {_fmt_price(alert.price)}"
+        text = L(f"{base} 上穿 {_fmt_price(alert.price)}", f"{base} crosses above {_fmt_price(alert.price)}")
     elif alert.kind == "below" and alert.price is not None:
-        text = f"{base} 下穿 {_fmt_price(alert.price)}"
+        text = L(f"{base} 下穿 {_fmt_price(alert.price)}", f"{base} crosses below {_fmt_price(alert.price)}")
     elif alert.kind == "cross" and alert.price is not None:
-        arrow = {"up": "上穿", "down": "下穿"}.get(alert.direction, "达到")
+        arrow = {"up": L("上穿", "crosses above"), "down": L("下穿", "crosses below")}.get(alert.direction, L("达到", "reaches"))
         text = f"{base} {arrow} {_fmt_price(alert.price)}"
     elif alert.kind == "pct_change":
         text = f"{base} {_dir_word(alert.direction)} {alert.threshold:g}%/{_window_word(alert.window_sec)}"
     elif alert.kind == "abs_change":
         text = f"{base} {_dir_word(alert.direction)} {_fmt_price(float(alert.threshold or 0))}/{_window_word(alert.window_sec)}"
     else:
-        text = f"{base} 价格告警"
+        text = L(f"{base} 价格告警", f"{base} price alert")
     if alert.note:
         text = f"{text} · {alert.note}"
     return text
@@ -333,18 +335,21 @@ def telegram_text(alert: PriceAlert, event: dict[str, Any]) -> str:
     reasons = event.get("reasons") or []
     lines = [
         f"🔔 {describe_alert(alert)}",
-        f"现价 {_fmt_price(float(price))}" if price is not None else "",
+        L("现价 ", "Price ") + _fmt_price(float(price)) if price is not None else "",
     ]
     if reasons:
         lines.append(str(reasons[0]))
     if not alert.repeat:
-        lines.append("已触发，告警已关闭")
+        lines.append(L("已触发，告警已关闭", "Triggered; alert closed"))
     return "\n".join(x for x in lines if x)
 
 
 def _reason(alert: PriceAlert, price: float, hit: dict[str, Any]) -> str:
     if alert.kind in ("cross", "above", "below"):
-        return f"现价 {_fmt_price(price)}，价位 {_fmt_price(float(hit['level']))}"
+        return L(
+            f"现价 {_fmt_price(price)}，价位 {_fmt_price(float(hit['level']))}",
+            f"Price {_fmt_price(price)}, level {_fmt_price(float(hit['level']))}",
+        )
     window = _window_word(alert.window_sec)
     pct = hit.get("pct")
     delta = hit.get("delta")
@@ -353,28 +358,31 @@ def _reason(alert: PriceAlert, price: float, hit: dict[str, Any]) -> str:
     delta_s = f"{delta:+.4g}" if isinstance(delta, float) else ""
     ref_s = _fmt_price(float(ref)) if isinstance(ref, float) else ""
     if alert.kind == "pct_change":
-        return f"{window} {pct_s}（自 {ref_s} → {_fmt_price(price)}）"
-    return f"{window} {delta_s}（{pct_s}，自 {ref_s}）"
+        return L(
+            f"{window} {pct_s}（自 {ref_s} → {_fmt_price(price)}）",
+            f"{window} {pct_s} (from {ref_s} → {_fmt_price(price)})",
+        )
+    return L(f"{window} {delta_s}（{pct_s}，自 {ref_s}）", f"{window} {delta_s} ({pct_s}, from {ref_s})")
 
 
 def _dir_word(direction: str) -> str:
-    return {"up": "上涨", "down": "下跌"}.get(direction, "波动")
+    return {"up": L("上涨", "up"), "down": L("下跌", "down")}.get(direction, L("波动", "moves"))
 
 
 def _window_word(window_sec: int) -> str:
     if window_sec <= 0:
-        return "自设定起"
+        return L("自设定起", "since set")
     if window_sec % 3600 == 0:
-        return f"{window_sec // 3600}小时"
+        return L(f"{window_sec // 3600}小时", f"{window_sec // 3600}h")
     if window_sec % 60 == 0:
-        return f"{window_sec // 60}分钟"
-    return f"{window_sec}秒"
+        return L(f"{window_sec // 60}分钟", f"{window_sec // 60}m")
+    return L(f"{window_sec}秒", f"{window_sec}s")
 
 
 def _build_alert(spec: dict[str, Any], *, now: float) -> PriceAlert:
     kind = str(spec.get("kind") or "").strip()
     if kind not in KINDS:
-        raise ValueError(f"不支持的告警类型: {kind}")
+        raise ValueError(L(f"不支持的告警类型: {kind}", f"Unsupported alert kind: {kind}"))
     symbol = normalize_symbol(str(spec.get("symbol") or ""))
     direction = str(spec.get("direction") or "any").strip().lower()
     if kind == "above":
@@ -382,18 +390,18 @@ def _build_alert(spec: dict[str, Any], *, now: float) -> PriceAlert:
     elif kind == "below":
         direction = "down"
     if direction not in DIRECTIONS:
-        raise ValueError("direction 须为 up / down / any")
+        raise ValueError(L("direction 须为 up / down / any", "direction must be up / down / any"))
     price = _opt_float(spec.get("price"))
     threshold = _opt_float(spec.get("threshold"))
     if kind in ("cross", "above", "below"):
         if price is None or price <= 0:
-            raise ValueError("价位告警需要大于 0 的价格")
+            raise ValueError(L("价位告警需要大于 0 的价格", "Level alert needs a price > 0"))
     else:
         if threshold is None or threshold <= 0:
-            raise ValueError("涨跌告警需要大于 0 的阈值")
+            raise ValueError(L("涨跌告警需要大于 0 的阈值", "Change alert needs a threshold > 0"))
     window_sec = int(spec.get("window_sec") or 0)
     if window_sec < 0 or window_sec > 6 * 3600:
-        raise ValueError("窗口需在 0 到 6 小时之间")
+        raise ValueError(L("窗口需在 0 到 6 小时之间", "Window must be between 0 and 6 hours"))
     cooldown = spec.get("cooldown_sec")
     cooldown_sec = 300 if cooldown is None else max(0, int(cooldown))
     return PriceAlert(

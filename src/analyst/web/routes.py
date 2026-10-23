@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from analyst.config import get_settings
+from analyst.i18n import L, is_en
 from analyst.storage import repo
 from analyst.web.dto import session_to_dto
 
@@ -130,13 +131,13 @@ def get_config():
         "verification_delay_hours": s.verification_delay_hours,
         "verify_hours_by_timeframe": _DEFAULT_VERIFY_HOURS,
         "verify_hours_options": [
-            {"value": 4, "label": "4h（极短）"},
+            {"value": 4, "label": L("4h（极短）", "4h (very short)")},
             {"value": 8, "label": "8h"},
             {"value": 12, "label": "12h"},
-            {"value": 24, "label": "24h（推荐 4h 周期）"},
+            {"value": 24, "label": L("24h（推荐 4h 周期）", "24h (recommended for 4h)")},
             {"value": 48, "label": "48h"},
             {"value": 72, "label": "72h"},
-            {"value": 168, "label": "168h（一周）"},
+            {"value": 168, "label": L("168h（一周）", "168h (one week)")},
         ],
     }
 
@@ -164,7 +165,7 @@ def get_session(sid: int):
 
     s = repo.get_session(sid)
     if not s:
-        raise HTTPException(404, f"会话 #{sid} 不存在")
+        raise HTTPException(404, L(f"会话 #{sid} 不存在", f"Session #{sid} not found"))
     extras = recompute_market_extras_from_db(s)
     return session_to_dto(s, market_extras=extras)
 
@@ -188,7 +189,7 @@ def practice(req: PracticeRequest):
             verify_after_hours=req.verify_after_hours,
         )
     except Exception as e:
-        raise HTTPException(500, f"分析失败：{e}") from e
+        raise HTTPException(500, L(f"分析失败：{e}", f"Analysis failed: {e}")) from e
 
 
 @router.post("/api/sessions/analyze-async")
@@ -203,11 +204,11 @@ def analyze_async(req: PracticeRequest, background_tasks: BackgroundTasks):
             req.verify_after_hours,
         )
     except Exception as e:
-        raise HTTPException(500, f"创建分析失败：{e}") from e
+        raise HTTPException(500, L(f"创建分析失败：{e}", f"Failed to create analysis: {e}")) from e
 
     sid = dto.get("id")
     if sid is None:
-        raise HTTPException(500, "会话创建失败：无 id")
+        raise HTTPException(500, L("会话创建失败：无 id", "Session creation failed: no id"))
     background_tasks.add_task(run_ai_job, sid)
     return dto
 
@@ -216,24 +217,40 @@ def _retry_ai_browser_page(sid: int) -> HTMLResponse:
     """浏览器用 GET 打开 /retry 时返回可提交的 POST 表单（API 本身只接受 POST）。"""
     s = repo.get_session(sid)
     if not s:
-        raise HTTPException(404, f"会话 #{sid} 不存在")
+        raise HTTPException(404, L(f"会话 #{sid} 不存在", f"Session #{sid} not found"))
+    if is_en():
+        html_lang = "en"
+        t_title = f"Rerun AI · Session #{sid}"
+        t_h1 = f"Session #{sid}"
+        t_intro = "The rerun-AI endpoint requires <strong>POST</strong>; opening it in the address bar only shows this page."
+        t_btn = "🔄 Rerun AI analysis"
+        t_cli = "Or run in a terminal:"
+        t_back = "← Back to home"
+    else:
+        html_lang = "zh-CN"
+        t_title = f"补跑 AI · 会话 #{sid}"
+        t_h1 = f"会话 #{sid}"
+        t_intro = "补跑 AI 接口需要使用 <strong>POST</strong>，地址栏直接打开只会触发本说明页。"
+        t_btn = "🔄 补跑 AI 分析"
+        t_cli = "或在终端执行："
+        t_back = "← 返回首页"
     return HTMLResponse(
         f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>补跑 AI · 会话 #{sid}</title>
+<html lang="{html_lang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{t_title}</title>
 <style>
 body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:1.5rem;max-width:28rem;margin:0 auto;line-height:1.5}}
 button,a.btn{{display:inline-block;background:#2563eb;color:#fff;border:none;padding:.65rem 1.1rem;border-radius:.5rem;font-size:.95rem;cursor:pointer;text-decoration:none}}
 a.btn{{background:#475569}}
 .muted{{color:#94a3b8;font-size:.85rem;margin-top:1rem}}
 </style></head><body>
-<h1 style="font-size:1.15rem">会话 #{sid}</h1>
-<p>补跑 AI 接口需要使用 <strong>POST</strong>，地址栏直接打开只会触发本说明页。</p>
+<h1 style="font-size:1.15rem">{t_h1}</h1>
+<p>{t_intro}</p>
 <form method="post" action="/api/sessions/{sid}/retry">
-  <button type="submit">🔄 补跑 AI 分析</button>
+  <button type="submit">{t_btn}</button>
 </form>
-<p class="muted">或在终端执行：<code style="background:#1e293b;padding:.15rem .4rem;border-radius:.25rem">curl -X POST http://127.0.0.1:8000/api/sessions/{sid}/retry</code></p>
-<p style="margin-top:1.25rem"><a class="btn" href="/">← 返回首页</a></p>
+<p class="muted">{t_cli}<code style="background:#1e293b;padding:.15rem .4rem;border-radius:.25rem">curl -X POST http://127.0.0.1:8000/api/sessions/{sid}/retry</code></p>
+<p style="margin-top:1.25rem"><a class="btn" href="/">{t_back}</a></p>
 </body></html>"""
     )
 
@@ -247,15 +264,14 @@ def retry_ai_browser_get(sid: int):
 def _retry_ai_post_impl(sid: int):
     from analyst.training.session import retry_quick_session_ai
 
+    if not repo.get_session(sid):
+        raise HTTPException(404, L(f"会话 #{sid} 不存在", f"Session #{sid} not found"))
     try:
         return retry_quick_session_ai(sid)
     except ValueError as e:
-        msg = str(e)
-        if "不存在" in msg:
-            raise HTTPException(404, msg) from e
-        raise HTTPException(400, msg) from e
+        raise HTTPException(400, str(e)) from e
     except Exception as e:
-        raise HTTPException(500, f"补跑失败：{e}") from e
+        raise HTTPException(500, L(f"补跑失败：{e}", f"Retry failed: {e}")) from e
 
 
 @router.post("/api/sessions/{sid}/retry")
@@ -297,7 +313,7 @@ def verify_one(sid: int, force: bool = False):
 
     s = repo.get_session(sid)
     if not s:
-        raise HTTPException(404, f"会话 #{sid} 不存在")
+        raise HTTPException(404, L(f"会话 #{sid} 不存在", f"Session #{sid} not found"))
 
     if s.status == "verified":
         return session_to_dto(s)
@@ -305,17 +321,21 @@ def verify_one(sid: int, force: bool = False):
     user_plan_db = repo.get_user_plan(sid)
     ai_plan_db = repo.get_ai_plan(sid)
     if not ai_plan_db:
-        raise HTTPException(400, "没有 AI 计划，无法验证")
+        raise HTTPException(400, L("没有 AI 计划，无法验证", "No AI plan; cannot verify"))
 
     candles = fetch_future_candles(s.symbol, s.created_at, timeframe="1h")
     min_candles = 3
     if not candles:
-        raise HTTPException(400, "还没有任何后续 K 线数据")
+        raise HTTPException(400, L("还没有任何后续 K 线数据", "No subsequent candles yet"))
     if len(candles) < min_candles and not force:
         raise HTTPException(
             409,
-            f"目前只有 {len(candles)} 根 1h K 线（建议至少 {min_candles} 根再验证）。"
-            f"如确认要验证，重试时加 ?force=true"
+            L(
+                f"目前只有 {len(candles)} 根 1h K 线（建议至少 {min_candles} 根再验证）。"
+                f"如确认要验证，重试时加 ?force=true",
+                f"Only {len(candles)} 1h candles so far (at least {min_candles} recommended before verifying). "
+                f"To verify anyway, retry with ?force=true",
+            ),
         )
 
     # 用户结果

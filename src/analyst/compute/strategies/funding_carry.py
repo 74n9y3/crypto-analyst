@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from analyst.backtest.classic import CostModel
+from analyst.i18n import L
 
 
 @dataclass
@@ -155,7 +156,8 @@ def current_carry_status(
         "ema_apr_pct": round(ema * 3 * 365 * 100, 2),
         "last_rate_pct": round(last_rate * 100, 5),
         "note": (
-            "费率 EMA 高于门槛：现货多+永续空收费中" if active
-            else "费率 EMA 低于门槛：观望（负费率时空头倒贴）"
+            L("费率 EMA 高于门槛：现货多+永续空收费中", "Funding EMA above threshold: long spot + short perp, collecting")
+            if active
+            else L("费率 EMA 低于门槛：观望（负费率时空头倒贴）", "Funding EMA below threshold: stay flat (shorts pay when negative)")
         ),
     }

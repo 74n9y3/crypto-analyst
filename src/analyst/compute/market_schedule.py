@@ -14,7 +14,18 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from analyst.i18n import L
+
 logger = logging.getLogger(__name__)
+
+_CITY_EN = {"北京": "Beijing", "迪拜": "Dubai", "伦敦": "London", "纽约": "New York"}
+_WD_ZH = "一二三四五六日"
+_WD_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_SESSION_EN = {
+    "asia_am": ("Asia active", "Asia morning; often hunts liquidity / fake breakouts"),
+    "eu_open": ("Europe open", "London takes over; volatility often rises"),
+    "us_open": ("US open", "New York takes over; crypto often moves with risk assets"),
+}
 
 FF_WEEK_JSON = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
@@ -98,11 +109,13 @@ def _iter_session_occurrences(
             end = _at_utc(day, win["end_utc"])
             if end <= start:
                 end += timedelta(days=1)
+            sid = str(win["id"])
+            en_name, en_hint = _SESSION_EN.get(sid, (str(win["name"]), str(win.get("hint") or "")))
             out.append(
                 SessionOccurrence(
-                    id=str(win["id"]),
-                    name=str(win["name"]),
-                    hint=str(win.get("hint") or ""),
+                    id=sid,
+                    name=L(str(win["name"]), en_name),
+                    hint=L(str(win.get("hint") or ""), en_hint),
                     start=start,
                     end=end,
                 )
@@ -150,12 +163,12 @@ def build_clocks(
             rows.append(
                 {
                     "id": "local",
-                    "label": "本地",
+                    "label": L("本地", "Local"),
                     "tz": local_tz,
                     "time": local.strftime("%H:%M:%S"),
                     "date": local.strftime("%m-%d"),
                     "offset": f"UTC{sign}{abs_m // 60:02d}:{abs_m % 60:02d}",
-                    "weekday": "一二三四五六日"[local.weekday()],
+                    "weekday": L(_WD_ZH[local.weekday()], _WD_EN[local.weekday()]),
                     "is_local": True,
                 }
             )
@@ -178,12 +191,12 @@ def build_clocks(
         rows.append(
             {
                 "id": cid,
-                "label": label,
+                "label": L(label, _CITY_EN.get(label, label)),
                 "tz": tz_name,
                 "time": local.strftime("%H:%M:%S"),
                 "date": local.strftime("%m-%d"),
                 "offset": f"UTC{sign}{abs_m // 60:02d}:{abs_m % 60:02d}",
-                "weekday": "一二三四五六日"[local.weekday()],
+                "weekday": L(_WD_ZH[local.weekday()], _WD_EN[local.weekday()]),
                 "is_local": False,
             }
         )
@@ -270,11 +283,15 @@ def session_lead_candidates(
                         "title": o.name,
                         "hint": o.hint,
                         "at": o.start.isoformat(),
-                        "text": (
+                        "text": L(
                             f"⏱ 还有 {lead} 分钟进入「{o.name}」\n"
                             f"{o.hint}\n"
                             f"开始 {o.start.astimezone(ZoneInfo('Asia/Dubai')):%H:%M} 迪拜"
-                            f" / {o.start.astimezone(ZoneInfo('Asia/Shanghai')):%H:%M} 北京"
+                            f" / {o.start.astimezone(ZoneInfo('Asia/Shanghai')):%H:%M} 北京",
+                            f"⏱ {lead} min to “{o.name}”\n"
+                            f"{o.hint}\n"
+                            f"Starts {o.start.astimezone(ZoneInfo('Asia/Dubai')):%H:%M} Dubai"
+                            f" / {o.start.astimezone(ZoneInfo('Asia/Shanghai')):%H:%M} Beijing",
                         ),
                     }
                 )
@@ -435,7 +452,7 @@ def macro_lead_candidates(
                         "lead_min": lead,
                         "title": e["title"],
                         "at": at.isoformat(),
-                        "text": (
+                        "text": L(
                             f"📰 还有 {lead} 分钟 · {e['impact']} 影响\n"
                             f"{e['country']} {e['title']}\n"
                             f"{dxb:%m-%d %H:%M} 迪拜 / {bj:%m-%d %H:%M} 北京"
@@ -443,7 +460,15 @@ def macro_lead_candidates(
                                 f"\n预期 {e['forecast']} · 前值 {e['previous']}"
                                 if e.get("forecast") or e.get("previous")
                                 else ""
-                            )
+                            ),
+                            f"📰 {lead} min · {e['impact']} impact\n"
+                            f"{e['country']} {e['title']}\n"
+                            f"{dxb:%m-%d %H:%M} Dubai / {bj:%m-%d %H:%M} Beijing"
+                            + (
+                                f"\nForecast {e['forecast']} · previous {e['previous']}"
+                                if e.get("forecast") or e.get("previous")
+                                else ""
+                            ),
                         ),
                     }
                 )
@@ -514,11 +539,13 @@ def funding_lead_candidates(
                     "key": f"funding|{symbol}|{at.isoformat()}|{lead}",
                     "kind": "funding",
                     "lead_min": lead,
-                    "title": "资金费结算",
+                    "title": L("资金费结算", "Funding settlement"),
                     "at": snap["at"],
-                    "text": (
+                    "text": L(
                         f"💸 还有 {lead} 分钟资金费结算 · {symbol}\n"
-                        f"费率 {rate_txt} · 本地 {local_t}"
+                        f"费率 {rate_txt} · 本地 {local_t}",
+                        f"💸 Funding in {lead} min · {symbol}\n"
+                        f"Rate {rate_txt} · local {local_t}",
                     ),
                 }
             )

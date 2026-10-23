@@ -29,6 +29,7 @@ from analyst.compute.strategies.pullback_long import (
     OrderPlan,
     position_size,
 )
+from analyst.i18n import L
 
 logger = logging.getLogger(__name__)
 
@@ -124,11 +125,11 @@ class PaperBroker:
         self._roll_day(ts)
         sym = plan.symbol
         if self._paused(ts):
-            return self._log(PaperEvent("reject", sym, plan.entry, text="熔断暂停期，拒绝新挂单", ts=_now_iso(ts)))
+            return self._log(PaperEvent("reject", sym, plan.entry, text=L("熔断暂停期，拒绝新挂单", "Circuit breaker paused; new order rejected"), ts=_now_iso(ts)))
         if sym in self.state["positions"]:
             return None
         if len(self.state["positions"]) >= self.max_positions:
-            return self._log(PaperEvent("reject", sym, plan.entry, text=f"已达最大持仓数 {self.max_positions}", ts=_now_iso(ts)))
+            return self._log(PaperEvent("reject", sym, plan.entry, text=L(f"已达最大持仓数 {self.max_positions}", f"Max positions reached ({self.max_positions})"), ts=_now_iso(ts)))
         prev = self.state["pending"].get(sym)
         if prev and abs(prev["entry"] / plan.entry - 1) < 0.002:
             return None  # 同一计划重复提交
@@ -142,7 +143,10 @@ class PaperBroker:
         return self._log(
             PaperEvent(
                 "submit", sym, plan.entry, qty,
-                text=f"挂限价多 {plan.entry:.6g} × {qty:.4g}（名义 {qty*plan.entry:,.0f}U）· 止损 {plan.stop:.6g} · 一半止盈 {plan.tp1:.6g} · RR {plan.rr:.1f} · 有效至 {plan.expires_at:%m-%d %H:%M}",
+                text=L(
+                    f"挂限价多 {plan.entry:.6g} × {qty:.4g}（名义 {qty*plan.entry:,.0f}U）· 止损 {plan.stop:.6g} · 一半止盈 {plan.tp1:.6g} · RR {plan.rr:.1f} · 有效至 {plan.expires_at:%m-%d %H:%M}",
+                    f"Limit long {plan.entry:.6g} × {qty:.4g} (notional {qty*plan.entry:,.0f}U) · SL {plan.stop:.6g} · TP1 (half) {plan.tp1:.6g} · RR {plan.rr:.1f} · valid until {plan.expires_at:%m-%d %H:%M}",
+                ),
                 ts=_now_iso(ts), extra={"plan": d},
             )
         )
@@ -157,7 +161,7 @@ class PaperBroker:
         if pend and not pos:
             if ts >= datetime.fromisoformat(pend["expires_at"]):
                 del self.state["pending"][symbol]
-                events.append(self._log(PaperEvent("expire", symbol, price, text=f"挂单 {pend['entry']:.6g} 过期未成交", ts=_now_iso(ts))))
+                events.append(self._log(PaperEvent("expire", symbol, price, text=L(f"挂单 {pend['entry']:.6g} 过期未成交", f"Order {pend['entry']:.6g} expired unfilled"), ts=_now_iso(ts))))
             elif price <= pend["entry"]:
                 qty = float(pend["qty"])
                 fee = qty * pend["entry"] * MAKER_FEE
@@ -169,7 +173,7 @@ class PaperBroker:
                 }
                 self.state["positions"][symbol] = pos
                 del self.state["pending"][symbol]
-                events.append(self._log(PaperEvent("fill", symbol, pend["entry"], qty, text=f"限价成交 {pend['entry']:.6g} × {qty:.4g}；止损 {pend['stop']:.6g} · 一半止盈 {pend['tp1']:.6g}", ts=_now_iso(ts))))
+                events.append(self._log(PaperEvent("fill", symbol, pend["entry"], qty, text=L(f"限价成交 {pend['entry']:.6g} × {qty:.4g}；止损 {pend['stop']:.6g} · 一半止盈 {pend['tp1']:.6g}", f"Limit filled {pend['entry']:.6g} × {qty:.4g}; SL {pend['stop']:.6g} · TP1 (half) {pend['tp1']:.6g}"), ts=_now_iso(ts))))
         if pos:
             pos["peak"] = max(float(pos.get("peak") or price), price)
             if price <= pos["stop"]:
@@ -186,7 +190,7 @@ class PaperBroker:
                 if self.cfg.be_after_tp1:
                     pos["stop"] = max(pos["stop"], pos["entry"])
                 self.state["equity"] += pnl
-                events.append(self._log(PaperEvent("tp1", symbol, px, q, pnl, text=f"一半止盈 {px:.6g} × {q:.4g}，{pnl:+.1f}U；止损上移到成本 {pos['stop']:.6g}", ts=_now_iso(ts))))
+                events.append(self._log(PaperEvent("tp1", symbol, px, q, pnl, text=L(f"一半止盈 {px:.6g} × {q:.4g}，{pnl:+.1f}U；止损上移到成本 {pos['stop']:.6g}", f"TP1 half {px:.6g} × {q:.4g}, {pnl:+.1f}U; stop moved to breakeven {pos['stop']:.6g}"), ts=_now_iso(ts))))
         events.extend(self._check_fuse(price_by={symbol: price}, ts=ts))
         if events:
             self.save()
@@ -226,7 +230,7 @@ class PaperBroker:
         self.state["closed"].append(rec)
         self.state["positions"].pop(symbol, None)
         kind = "stop" if reason in ("stop", "be_stop") else "exit"
-        return self._log(PaperEvent(kind, symbol, px, qty, pnl, text=f"{reason} 平仓 {px:.6g} × {qty:.4g}，本腿 {pnl:+.1f}U，本笔合计 {total:+.1f}U · 权益 {self.equity:,.0f}U", ts=_now_iso(ts), extra={"reason": reason}))
+        return self._log(PaperEvent(kind, symbol, px, qty, pnl, text=L(f"{reason} 平仓 {px:.6g} × {qty:.4g}，本腿 {pnl:+.1f}U，本笔合计 {total:+.1f}U · 权益 {self.equity:,.0f}U", f"{reason} closed {px:.6g} × {qty:.4g}, leg {pnl:+.1f}U, trade total {total:+.1f}U · equity {self.equity:,.0f}U"), ts=_now_iso(ts), extra={"reason": reason}))
 
     def _check_fuse(self, *, price_by: dict[str, float], ts: datetime) -> list[PaperEvent]:
         if self.daily_fuse_pct <= 0 or self._paused(ts):
@@ -248,7 +252,7 @@ class PaperBroker:
         self.state["pending"].clear()
         nxt = (ts.astimezone(timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         self.state["paused_until"] = nxt.isoformat()
-        events.append(self._log(PaperEvent("fuse", "*", 0.0, text=f"日内回撤 {dd*100:.1f}% ≥ {self.daily_fuse_pct}%：全平并暂停至 {nxt:%m-%d %H:%M} UTC", ts=_now_iso(ts))))
+        events.append(self._log(PaperEvent("fuse", "*", 0.0, text=L(f"日内回撤 {dd*100:.1f}% ≥ {self.daily_fuse_pct}%：全平并暂停至 {nxt:%m-%d %H:%M} UTC", f"Intraday drawdown {dd*100:.1f}% ≥ {self.daily_fuse_pct}%: closed all, paused until {nxt:%m-%d %H:%M} UTC"), ts=_now_iso(ts))))
         return events
 
     # ── 汇总 ──

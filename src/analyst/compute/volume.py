@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from analyst.data.fetcher import CandleSeries
+from analyst.i18n import L
 
 
 @dataclass
@@ -28,6 +29,7 @@ class VolumeAnalysis:
     obv: float                  # 当前 OBV
     obv_trend: str              # "rising" / "falling" / "flat"
     price_volume_signal: str    # 量价配合状态
+    price_volume_kind: str = "neutral"  # rise_up_vol / rise_low_vol / drop_up_vol / drop_low_vol / neutral / insufficient
 
 
 def analyze_volume(series: CandleSeries) -> VolumeAnalysis:
@@ -41,7 +43,8 @@ def analyze_volume(series: CandleSeries) -> VolumeAnalysis:
             volume_ratio=1.0,
             obv=0,
             obv_trend="flat",
-            price_volume_signal="数据不足",
+            price_volume_signal=L("数据不足", "Insufficient data"),
+            price_volume_kind="insufficient",
         )
 
     volumes = [c.volume for c in candles]
@@ -83,25 +86,31 @@ def analyze_volume(series: CandleSeries) -> VolumeAnalysis:
         price_change = closes[-1] - closes[-3]
         vol_change = volumes[-1] - volumes[-3]
         if price_change > 0 and vol_change > 0:
-            signal = "量价齐升（健康上涨）"
+            kind = "rise_up_vol"
+            signal = L("量价齐升（健康上涨）", "Price and volume rising (healthy rally)")
         elif price_change > 0 and vol_change < 0:
-            signal = "价升量缩 ⚠️ 顶背离风险"
+            kind = "rise_low_vol"
+            signal = L("价升量缩 ⚠️ 顶背离风险", "Price up, volume down ⚠️ bearish divergence risk")
         elif price_change < 0 and vol_change > 0:
-            signal = "价跌量增（恐慌抛售）"
+            kind = "drop_up_vol"
+            signal = L("价跌量增（恐慌抛售）", "Price down, volume up (panic selling)")
         elif price_change < 0 and vol_change < 0:
-            signal = "缩量回调（弱势调整）"
+            kind = "drop_low_vol"
+            signal = L("缩量回调（弱势调整）", "Low-volume pullback (weak correction)")
         else:
-            signal = "量价中性"
+            kind = "neutral"
+            signal = L("量价中性", "Price/volume neutral")
     else:
-        signal = "量价中性"
+        kind = "neutral"
+        signal = L("量价中性", "Price/volume neutral")
 
     # 异常放量优先级最高
     if ratio >= 2.5:
-        signal = f"放量 {ratio:.1f}× · {signal}"
+        signal = L(f"放量 {ratio:.1f}× · {signal}", f"Volume spike {ratio:.1f}× · {signal}")
     elif ratio >= 1.5:
-        signal = f"温和放量 {ratio:.1f}× · {signal}"
+        signal = L(f"温和放量 {ratio:.1f}× · {signal}", f"Moderate volume {ratio:.1f}× · {signal}")
     elif ratio < 0.5:
-        signal = f"明显缩量 {ratio:.1f}× · {signal}"
+        signal = L(f"明显缩量 {ratio:.1f}× · {signal}", f"Thin volume {ratio:.1f}× · {signal}")
 
     return VolumeAnalysis(
         recent_volume=recent,
@@ -110,4 +119,5 @@ def analyze_volume(series: CandleSeries) -> VolumeAnalysis:
         obv=obv_now,
         obv_trend=obv_trend,
         price_volume_signal=signal,
+        price_volume_kind=kind,
     )

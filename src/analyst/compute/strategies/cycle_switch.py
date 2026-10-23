@@ -39,6 +39,7 @@ from datetime import datetime
 
 from analyst.compute.indicators import compute_adx, ema
 from analyst.data.fetcher import Candle, CandleSeries
+from analyst.i18n import L
 
 # BTC 减半日期（未来为预估）
 HALVING_DATES = [
@@ -201,10 +202,10 @@ def positions_cycle_switch(
 
 def _position_label(pos: float) -> str:
     if pos > 0:
-        return "做多 100%"
+        return L("做多 100%", "Long 100%")
     if pos < 0:
-        return f"做空 {abs(pos):.0%}"
-    return "空仓"
+        return L(f"做空 {abs(pos):.0%}", f"Short {abs(pos):.0%}")
+    return L("空仓", "Flat")
 
 
 def evaluate_cycle_switch(
@@ -225,7 +226,7 @@ def evaluate_cycle_switch(
             prev_position=prev_position,
             changed=False,
             price=series.latest_close if candles else 0.0,
-            reasons=["数据不足"],
+            reasons=[L("数据不足", "Not enough data")],
         )
 
     positions = positions_cycle_switch(
@@ -259,10 +260,13 @@ def evaluate_cycle_switch(
     std = (sum((v - mean) ** 2 for v in w) / len(w)) ** 0.5
     z = (closes[-1] - mean) / std if std > 0 else 0.0
 
-    zh = {"bull": "牛市", "bear": "熊市", "accum": "筑底"}
+    zh = {"bull": L("牛市", "bull"), "bear": L("熊市", "bear"), "accum": L("筑底", "accumulation")}
     reasons = [
-        f"双确认相位={zh.get(reg, reg)}（日历={zh.get(cal, cal)}）",
-        f"目标仓位={_position_label(target)}",
+        L(
+            f"双确认相位={zh.get(reg, reg)}（日历={zh.get(cal, cal)}）",
+            f"Double-confirmed phase={zh.get(reg, reg)} (calendar={zh.get(cal, cal)})",
+        ),
+        L(f"目标仓位={_position_label(target)}", f"Target position={_position_label(target)}"),
     ]
     if reg == "bear":
         ll = min(lows[i - cfg.entry_n : i]) if i >= cfg.entry_n else None
@@ -271,34 +275,48 @@ def evaluate_cycle_switch(
             cfg.bear_trend_short and ll is not None and closes[-1] < ll
         )
         if cfg.bear_trend_short and ll is not None:
-            reasons.append(f"熊市唐奇安：破位空={ll:.6g} / 回补={hx2:.6g}")
+            reasons.append(L(
+                f"熊市唐奇安：破位空={ll:.6g} / 回补={hx2:.6g}",
+                f"Bear Donchian: breakdown short={ll:.6g} / cover={hx2:.6g}",
+            ))
         if target < 0 and prev_bar >= 0:
             cause = (
-                f"唐奇安破位（收盘 < {ll:.6g}）"
+                L(f"唐奇安破位（收盘 < {ll:.6g}）", f"Donchian breakdown (close < {ll:.6g})")
                 if broke_down
                 else f"z-score={z:+.2f} > {cfg.fade_z}"
             )
-            reasons.append(f"新开空：{cause}")
+            reasons.append(L(f"新开空：{cause}", f"New short: {cause}"))
         elif target < 0:
-            reasons.append(f"持有空仓：z-score={z:+.2f}")
+            reasons.append(L(f"持有空仓：z-score={z:+.2f}", f"Holding short: z-score={z:+.2f}"))
         elif target == 0 and prev_bar < 0:
-            reasons.append(f"平空：z-score={z:+.2f} ≤ 0 或收回 {cfg.exit_n} 根高点")
+            reasons.append(L(
+                f"平空：z-score={z:+.2f} ≤ 0 或收回 {cfg.exit_n} 根高点",
+                f"Cover short: z-score={z:+.2f} ≤ 0 or reclaimed {cfg.exit_n}-bar high",
+            ))
         else:
-            cond = f"需 z>{cfg.fade_z}"
+            cond_zh = f"需 z>{cfg.fade_z}"
+            cond_en = f"need z>{cfg.fade_z}"
             if cfg.bear_trend_short and ll is not None:
-                cond += f" 或收盘破 {ll:.6g}"
-            reasons.append(f"观望未开空：z-score={z:+.2f}（{cond}）")
+                cond_zh += f" 或收盘破 {ll:.6g}"
+                cond_en += f" or close below {ll:.6g}"
+            reasons.append(L(
+                f"观望未开空：z-score={z:+.2f}（{cond_zh}）",
+                f"Watching, no short: z-score={z:+.2f} ({cond_en})",
+            ))
     else:
         if hh is not None:
-            reasons.append(f"唐奇安入场={hh:.6g} / 离场={lx:.6g}")
+            reasons.append(L(
+                f"唐奇安入场={hh:.6g} / 离场={lx:.6g}",
+                f"Donchian entry={hh:.6g} / exit={lx:.6g}",
+            ))
         if target > 0 and prev_bar <= 0:
-            reasons.append("唐奇安突破开多")
+            reasons.append(L("唐奇安突破开多", "Donchian breakout long"))
         elif target == 0 and prev_bar > 0:
-            reasons.append("唐奇安跌破离场")
+            reasons.append(L("唐奇安跌破离场", "Donchian breakdown exit"))
         elif target > 0:
-            reasons.append("持有多仓（唐奇安）")
+            reasons.append(L("持有多仓（唐奇安）", "Holding long (Donchian)"))
         else:
-            reasons.append("观望：未突破唐奇安入场位")
+            reasons.append(L("观望：未突破唐奇安入场位", "Watching: no Donchian entry break"))
 
     adx = compute_adx(highs[:-1], lows[:-1], closes[:-1]) if len(closes) > 2 else 0.0
     adx_ready = len(closes) >= 32
@@ -309,9 +327,17 @@ def evaluate_cycle_switch(
         and adx_ready
         and adx < cfg.min_adx
     )
-    reasons.append(f"ADX={adx:.1f}" + (
-        f"（<{cfg.min_adx:.0f} 震荡，新开仓不作为交易候选）" if chop_blocked else ""
-    ))
+    reasons.append(
+        f"ADX={adx:.1f}"
+        + (
+            L(
+                f"（<{cfg.min_adx:.0f} 震荡，新开仓不作为交易候选）",
+                f" (<{cfg.min_adx:.0f} ranging; new entries are not trade candidates)",
+            )
+            if chop_blocked
+            else ""
+        )
+    )
 
     # 波动率目标化建议仓位（不改变信号节奏，只提示按波动缩放的大小）
     vol_scale = 1.0
@@ -330,10 +356,12 @@ def evaluate_cycle_switch(
             vol_scale = max(0.15, min(1.0, cfg.vol_target / vol_annual))
     suggested = target * vol_scale
     if abs(target) > 1e-9:
-        reasons.append(
+        reasons.append(L(
             f"波动率目标化：建议仓位 {abs(suggested):.0%}"
-            f"（{_position_label(target)} × {vol_scale:.2f}）"
-        )
+            f"（{_position_label(target)} × {vol_scale:.2f}）",
+            f"Vol-targeted size: suggested {abs(suggested):.0%}"
+            f" ({_position_label(target)} × {vol_scale:.2f})",
+        ))
 
     return CycleSwitchSignal(
         market_regime=reg,

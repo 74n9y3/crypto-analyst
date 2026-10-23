@@ -17,6 +17,7 @@ from analyst.compute.volume import analyze_volume
 from analyst.config import get_settings
 from analyst.data.fetcher import Candle, CandleSeries
 from analyst.data.snapshot import MarketSnapshot, build_snapshot
+from analyst.i18n import L
 from analyst.storage import repo
 from analyst.storage.models import Session
 
@@ -203,14 +204,16 @@ def _ctx_to_market_extras(ctx: SessionContext, latency_ms: int | None = None) ->
     return out
 
 
-def run_ai_job(session_id: int, lang: str = "zh") -> None:
+def run_ai_job(session_id: int, lang: str | None = None) -> None:
     """后台任务：用已存快照调 LLM。由 FastAPI BackgroundTasks 调用。"""
     import logging
 
     from analyst.llm.analyst import analyze_market
+    from analyst.llm.prompts import normalize_lang
     from analyst.storage.models import AIPlan
 
     log = logging.getLogger(__name__)
+    lang = normalize_lang(lang)
 
     s = repo.get_session(session_id)
     if not s:
@@ -608,7 +611,7 @@ def retry_quick_session_ai(session_id: int) -> dict:
 
     s = repo.get_session(session_id)
     if not s:
-        raise ValueError(f"会话 #{session_id} 不存在")
+        raise ValueError(L(f"会话 #{session_id} 不存在", f"Session #{session_id} not found"))
 
     if repo.get_ai_plan(session_id):
         refreshed = repo.get_session(session_id)
@@ -616,11 +619,16 @@ def retry_quick_session_ai(session_id: int) -> dict:
         return session_to_dto(refreshed, market_extras=extras)
 
     if s.status == "ai_running":
-        raise ValueError("AI 正在生成中，请稍候或刷新页面")
+        raise ValueError(
+            L("AI 正在生成中，请稍候或刷新页面", "AI is still generating; please wait or refresh the page")
+        )
 
     if s.status not in ("created", "user_planned", "ai_failed", "ai_planned"):
         raise ValueError(
-            f'该会话状态为「{s.status}」，无法补跑'
+            L(
+                f'该会话状态为「{s.status}」，无法补跑',
+                f'Session status is "{s.status}"; cannot rerun AI',
+            )
         )
 
     market_dict = dict(s.market_snapshot or {})
