@@ -4396,7 +4396,7 @@
         </div>
         <div class="mt-1" style="color:var(--yellow)">${escapeHtml(t(alert.title || alert.rule || '告警'))} · ${alert.timeframe || ''}</div>
         ${countdown ? `<div class="mt-1 font-mono" style="color:var(--text)">${escapeHtml(countdown)}</div>` : ''}
-        <div class="mt-1" style="color:var(--muted)">${reasonLines.map((r) => escapeHtml(r)).join('；')}</div>
+        <div class="mt-1" style="color:var(--muted)">${reasonLines.map((r) => escapeHtml(r)).join(I18N.lang === 'en' ? ' · ' : '；')}</div>
         ${plan.stop_loss != null ? `<div class="mt-1 font-mono" style="color:var(--muted)">${t('入')} ${Number(plan.entry_low).toFixed(4)}–${Number(plan.entry_high).toFixed(4)} · SL ${Number(plan.stop_loss).toFixed(4)} · TP ${Number(plan.take_profit_1).toFixed(4)}</div>` : ''}
       `;
       card.onclick = () => {
@@ -5091,7 +5091,7 @@
         switchDock('alerts');
         toast(
           `${t((msg.title || msg.rule || msg.direction || 'ALERT').toString())} · ${msg.symbol}`,
-          (msg.reasons || []).slice(0, 2).join('；') || '规则提醒',
+          (msg.reasons || []).slice(0, 2).join(I18N.lang === 'en' ? ' · ' : '；') || t('规则提醒'),
           msg.direction,
         );
       } else if (msg.type === 'status') {

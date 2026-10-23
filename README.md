@@ -28,7 +28,7 @@ Top bar: **Monitor** → **Cycle** → **Schedule** → **Spot Radar** → **Str
 **Language:** Simplified Chinese and English. The `EN` / `中文` button at the top right switches the whole app, not just the page: the choice is saved on the server (`.cache/data/ui_settings.json`), and everything the backend produces follows it — AI analysis and chat, rule alerts, key-level playbooks, Telegram pushes, daily digest, news grading, Spot Radar, paper trading, Binance Square posts and CLI output. On first run it follows the browser language; `analyst lang en` / `analyst lang zh` switches it from the terminal. Text already generated (stored AI sessions, past alerts) stays in the language it was written in.
 
 <p align="center">
-  <img src="docs/images/web-dashboard.png" alt="Web monitor: candles, key levels and AI analysis" width="900" />
+  <img src="docs/images/web-dashboard.en.png" alt="Web monitor in English: candles, key levels and alerts" width="900" />
 </p>
 <p align="center"><em>Monitor page: candles on the left; a single collapsible sidebar on the right with vertical tabs "Key levels" and "AI analysis" (key levels include seed entry / stop / take-profit / support / resistance, with the playbook below support and resistance); alert log and analysis history at the bottom</em></p>
 
