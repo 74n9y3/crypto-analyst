@@ -22,7 +22,7 @@ from typing import Any
 
 from analyst.compute.plan import TradePlan
 from analyst.config import get_settings
-from analyst.llm.prompts import load_system_prompt, load_user_template
+from analyst.llm.prompts import language_directive, load_system_prompt, load_user_template
 
 _log = logging.getLogger(__name__)
 
@@ -275,12 +275,14 @@ def analyze_market(
     user_account: dict | None = None,
     *,
     free_only: bool = False,
+    lang: str = "zh",
 ) -> LLMResponse:
     """让 AI 分析市场并给出交易计划。
 
     Args:
         free_only: True 时只走 b.ai（限时免费）和其它免费前置层，
                    失败不回落 DeepSeek / Anthropic 等付费线路。盯盘自动「候选确认」应开启。
+        lang: 论述输出语言，``zh``（默认）或 ``en``。
     """
     settings = get_settings()
     provider = settings.llm_provider.lower()
@@ -299,7 +301,8 @@ def analyze_market(
 
     system = load_system_prompt(settings.llm_prompt_version)
     template = load_user_template(settings.llm_prompt_version)
-    user_msg = _build_user_message(template, market_snapshot, indicators_snapshot, user_account)
+    lang_note = language_directive(lang)
+    user_msg = _build_user_message(template, market_snapshot, indicators_snapshot, user_account) + lang_note
 
     def _fallback() -> LLMResponse:
         if provider == "anthropic":
@@ -340,7 +343,7 @@ def analyze_market(
             indicators_snapshot,
             user_account,
             recent_lessons_max_items=3,
-        )
+        ) + lang_note
         g_cap = int(getattr(settings, "groq_max_tokens", 4096) or 4096)
         g_cap = max(1024, min(g_cap, 8192))
         user_cap = max(1024, int(settings.llm_max_tokens or 4000))

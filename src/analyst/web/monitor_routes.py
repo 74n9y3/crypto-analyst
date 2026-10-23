@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from analyst.config import get_settings
 from analyst.data.fetcher import list_usdt_perp_symbols
+from analyst.llm.prompts import normalize_lang
 from analyst.monitor.hub import get_monitor_hub
 
 router = APIRouter(tags=["monitor"])
@@ -23,6 +24,7 @@ class MonitorAnalyzeRequest(BaseModel):
     timeframe: str = "4h"
     verify_after_hours: int | None = None
     market: str = Field(default="futures")
+    lang: str = "zh"
 
 
 def _chart_timeframes() -> list[str]:
@@ -210,6 +212,7 @@ class MonitorChatRequest(BaseModel):
     session_id: int | None = None
     context: dict | None = None
     history: list[dict] | None = None
+    lang: str = "zh"
 
 
 @router.post("/api/monitor/alerts/demo")
@@ -266,6 +269,7 @@ def monitor_chat(req: MonitorChatRequest):
             timeframe=tf,
             context=context,
             history=req.history,
+            lang=req.lang,
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
@@ -338,7 +342,7 @@ def monitor_analyze(req: MonitorAnalyzeRequest, background_tasks: BackgroundTask
     sid = dto.get("id")
     if sid is None:
         raise HTTPException(500, "会话创建失败：无 id")
-    background_tasks.add_task(run_ai_job, sid)
+    background_tasks.add_task(run_ai_job, sid, normalize_lang(req.lang))
     dto["analysis_timeframe"] = tf
     dto["chart_timeframe"] = req.timeframe
     return dto

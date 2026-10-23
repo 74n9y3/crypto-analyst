@@ -180,6 +180,14 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-cache"},
         )
 
+    @app.get("/i18n.js")
+    def i18n_js():
+        return FileResponse(
+            STATIC_DIR / "i18n.js",
+            media_type="text/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     @app.get("/icon-192.png")
     def icon_192():
         return FileResponse(STATIC_DIR / "icon-192.png", media_type="image/png")

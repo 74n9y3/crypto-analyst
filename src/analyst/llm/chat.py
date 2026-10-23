@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from analyst.config import get_settings
+from analyst.llm.prompts import normalize_lang
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,10 @@ CHAT_SYSTEM = """你是加密 U 本位永续合约助手，回答用户关于当
 3. 这不是投资建议；提醒杠杆与风控，勿鼓动满仓。
 4. 用简体中文，简洁分点，一般不超过 350 字。
 """
+
+CHAT_SYSTEM_EN_SUFFIX = (
+    "\n5. Override rule 4: answer in English, concise bullet points, usually under 250 words."
+)
 
 
 def _resolve_openai_client(settings):
@@ -177,6 +182,7 @@ def ask_monitor_question(
     timeframe: str = "4h",
     context: dict[str, Any] | None = None,
     history: list[dict[str, str]] | None = None,
+    lang: str = "zh",
 ) -> dict[str, Any]:
     """返回 {reply, model, latency_ms}。"""
     q = (question or "").strip()
@@ -186,8 +192,9 @@ def ask_monitor_question(
         raise ValueError("问题过长（最多 2000 字）")
 
     settings = get_settings()
+    system = CHAT_SYSTEM + (CHAT_SYSTEM_EN_SUFFIX if normalize_lang(lang) == "en" else "")
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": CHAT_SYSTEM},
+        {"role": "system", "content": system},
         {
             "role": "user",
             "content": "【当前盘面上下文】\n" + _context_block(symbol, timeframe, context),

@@ -14,6 +14,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="盯盘" />
+  <script src="/i18n.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://s3.tradingview.com/tv.js"></script>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -503,6 +504,8 @@
       color: var(--muted);
     }
     .badge.ok { color: var(--green); }
+    .lang-toggle { border: 1px solid var(--line); cursor: pointer; }
+    .lang-toggle:hover { color: var(--yellow); }
     .ai-panel {
       display: flex;
       flex-direction: column;
@@ -1403,6 +1406,7 @@
       <span id="connBadge" class="badge">…</span>
       <span id="tgBadge" class="badge">TG</span>
       <span id="daemonBadge" class="badge" title="关网页也继续推 TG（需 MONITOR_ALWAYS_ON）">常驻</span>
+      <button type="button" id="langToggle" class="badge lang-toggle" title="切换语言">EN</button>
     </div>
   </nav>
 
@@ -1665,7 +1669,7 @@
           </select>
         </div>
         <div class="bt-field">
-          <label>周期</label>
+          <label data-i18n-ctx="tf">周期</label>
           <select class="sel" id="btTimeframe">
             <option value="4h" selected>4 小时</option>
             <option value="1h">1 小时</option>
@@ -1899,11 +1903,25 @@
     '1h': '60', '2h': '120', '4h': '240', '6h': '360', '8h': '480', '12h': '720',
     '1d': 'D', '3d': '3D', '1w': 'W', '1M': 'M',
   };
-  const TF_LABELS = {
-    '1m': '1分', '3m': '3分', '5m': '5分', '15m': '15分', '30m': '30分',
-    '1h': '1时', '2h': '2时', '4h': '4时', '6h': '6时', '8h': '8时', '12h': '12时',
-    '1d': '日线', '3d': '3日', '1w': '周线', '1M': '月线',
-  };
+  const LANG = window.I18N.lang;
+  const LOCALE = window.I18N.locale;
+  const TF_LABELS = LANG === 'en'
+    ? {
+      '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m',
+      '1h': '1h', '2h': '2h', '4h': '4h', '6h': '6h', '8h': '8h', '12h': '12h',
+      '1d': '1D', '3d': '3D', '1w': '1W', '1M': '1M',
+    }
+    : {
+      '1m': '1分', '3m': '3分', '5m': '5分', '15m': '15分', '30m': '30分',
+      '1h': '1时', '2h': '2时', '4h': '4时', '6h': '6时', '8h': '8时', '12h': '12时',
+      '1d': '日线', '3d': '3日', '1w': '周线', '1M': '月线',
+    };
+
+  const langBtn = $('langToggle');
+  if (langBtn) {
+    langBtn.textContent = LANG === 'en' ? '中文' : 'EN';
+    langBtn.addEventListener('click', () => window.I18N.setLang(LANG === 'en' ? 'zh' : 'en'));
+  }
 
   // Lightweight Charts state
   let chart = null;
@@ -1975,8 +1993,11 @@
     }
     panel.classList.remove('hidden');
     const color = waveColor(w.value);
-    $('waveReadout').innerHTML = `<span style="color:${color}">${Number(w.value).toFixed(3)}</span> <span style="font-size:14px;font-weight:500">${escapeHtml(w.phase_label)}</span>`;
-    $('waveSub').textContent = `今天在往${w.phase === 'bull' ? '上' : '下'}走，距${w.turn_label}大约 ${w.days_to_turn} 天`;
+    $('waveReadout').innerHTML = `<span style="color:${color}">${Number(w.value).toFixed(3)}</span> <span style="font-size:14px;font-weight:500">${escapeHtml(t(w.phase_label))}</span>`;
+    $('waveSub').textContent = t(
+      w.phase === 'bull' ? '今天在往上走，距{turn}大约 {n} 天' : '今天在往下走，距{turn}大约 {n} 天',
+      { turn: t(w.turn_label), n: w.days_to_turn },
+    );
     paintWave(chart, waveHoverHeight);
     if (!waveChartBound) {
       waveChartBound = true;
@@ -2090,7 +2111,7 @@
       }
       ctx.fillStyle = m.kind === 'top' ? '#f6465d' : m.kind === 'bottom' ? '#5eb8f0' : '#7da3ff';
       ctx.textAlign = nearNow ? 'left' : 'center';
-      ctx.fillText(nearNow ? `${m.label}（临近）` : m.label, nearNow ? nx + 6 : x, h - 12);
+      ctx.fillText(nearNow ? t('{label}（临近）', { label: t(m.label) }) : t(m.label), nearNow ? nx + 6 : x, h - 12);
     });
     ctx.strokeStyle = '#f0b90b';
     ctx.lineWidth = 1.4;
@@ -2105,7 +2126,7 @@
     ctx.fill();
     ctx.fillStyle = '#f0b90b';
     ctx.textAlign = 'center';
-    ctx.fillText('今天', nx, 12);
+    ctx.fillText(t('今天'), nx, 12);
 
     const hover = hoverHeight == null ? null : pts.reduce((best, p) => (
       Math.abs(p.height - hoverHeight) < Math.abs(best.height - hoverHeight) ? p : best
@@ -2128,7 +2149,7 @@
       const nxt = pts[Math.min(pts.length - 1, Math.max(0, i + 1))];
       const prev = pts[Math.max(0, i - 1)];
       const rising = nxt.value > prev.value;
-      $('waveHover').innerHTML = `${hover.future ? '预计 ' : ''}${waveDate(hover.ts)}<br>${Number(hover.value).toFixed(3)} · ${rising ? '往上（牛）' : '往下（熊）'}`;
+      $('waveHover').innerHTML = `${hover.future ? t('预计 ') : ''}${waveDate(hover.ts)}<br>${Number(hover.value).toFixed(3)} · ${rising ? t('往上（牛）') : t('往下（熊）')}`;
     }
   }
 
@@ -2136,7 +2157,7 @@
     const box = $('cycleStats');
     if (!box || !data?.calendar) return;
     const cal = data.calendar;
-    const phaseZh = cal.phase === 'bull' ? '牛市' : '熊市';
+    const phaseZh = t(cal.phase === 'bull' ? '牛市' : '熊市');
     const phaseColor = cal.phase === 'bull' ? 'var(--green)' : 'var(--red)';
     box.innerHTML = `
       <div class="cycle-stat">
@@ -2145,12 +2166,12 @@
       </div>
       <div class="cycle-stat">
         <span class="k">相位进度</span>
-        <span class="v">第 ${cal.phase_day} / ${cal.phase_total_days} 天</span>
+        <span class="v">${t('第 {a} / {b} 天', { a: cal.phase_day, b: cal.phase_total_days })}</span>
       </div>
       <div class="cycle-stat">
         <span class="k">下一里程碑</span>
-        <span class="v" style="font-size:12px">${escapeHtml(cal.next_milestone.label)}<br/>
-          <span style="color:var(--muted);font-weight:400">${cal.days_to_milestone} 天后</span></span>
+        <span class="v" style="font-size:12px">${escapeHtml(t(cal.next_milestone.label))}<br/>
+          <span style="color:var(--muted);font-weight:400">${t('{n} 天后', { n: cal.days_to_milestone })}</span></span>
       </div>`;
 
     const fill = $('cyclePhaseFill');
@@ -2160,7 +2181,12 @@
       fill.style.width = `${cal.phase_pct}%`;
     }
     if (label) {
-      label.textContent = `${phaseZh}已完成 ${cal.phase_pct}% · 预计 ${cal.next_milestone.date.slice(0, 10)} ${cal.next_milestone.label}`;
+      label.textContent = t('{phase}已完成 {pct}% · 预计 {date} {label}', {
+        phase: phaseZh,
+        pct: cal.phase_pct,
+        date: cal.next_milestone.date.slice(0, 10),
+        label: t(cal.next_milestone.label),
+      });
     }
     if ($('cycleSummaryLine')) {
       $('cycleSummaryLine').textContent = data.summary || '';
@@ -2173,25 +2199,29 @@
     const box = $('cycleRegime');
     if (!box) return;
     if (!rg) { box.classList.add('hidden'); return; }
-    const zh = { bull: '牛市', bear: '熊市', accum: '筑底/过渡' };
+    const zh = { bull: t('牛市'), bear: t('熊市'), accum: t('筑底/过渡') };
     const color = { bull: 'var(--green)', bear: 'var(--red)', accum: '#f0b90b' };
     const calOk = rg.calendar_phase === 'bear' ? '✓' : '✗';
-    const maZh = rg.ma_state === 'bear' ? '下方' : '上方';
+    const maZh = t(rg.ma_state === 'bear' ? '下方' : '上方');
     const dev = Number(rg.deviation_pct) || 0;
     box.className = `cycle-regime ${rg.regime}`;
     box.classList.remove('hidden');
+    const checkLine = t('日历相位 {cal} · BTC {price} 在 200日EMA {ema} {pos}', {
+      cal: `<b>${zh[rg.calendar_phase] || rg.calendar_phase}</b>`,
+      price: `<b>${Number(rg.price).toLocaleString()}</b>`,
+      ema: `<b>${Number(rg.ema200d).toLocaleString()}</b>`,
+      pos: maZh,
+    });
     box.innerHTML = `
       <div class="cr-title">双确认相位（cycle_switch 实际执行口径）：
         <span style="color:${color[rg.regime]}">${zh[rg.regime] || rg.regime}</span></div>
       <div class="cr-check">
-        日历相位 <b>${zh[rg.calendar_phase] || rg.calendar_phase}</b>
-        · BTC <b>${Number(rg.price).toLocaleString()}</b> 在 200日EMA
-        <b>${Number(rg.ema200d).toLocaleString()}</b> ${maZh}
+        ${checkLine}
         <b style="color:${dev >= 0 ? 'var(--green)' : 'var(--red)'}">${dev >= 0 ? '+' : ''}${dev.toFixed(1)}%</b>
-        （防抖带 ±${rg.band_pct}%）
-        ${rg.regime === 'bear' ? `· 判熊双确认 日历${calOk} 均线✓` : ''}
+        ${t('（防抖带 ±{band}%）', { band: rg.band_pct })}
+        ${rg.regime === 'bear' ? t('· 判熊双确认 日历{cal} 均线✓', { cal: calOk }) : ''}
       </div>
-      <div class="cr-leg">→ 当前激活：<b>${escapeHtml(rg.active_leg || '')}</b></div>`;
+      <div class="cr-leg">→ 当前激活：<b>${escapeHtml(t(rg.active_leg || ''))}</b></div>`;
   }
 
   function renderCycleSvg(data) {
@@ -2311,14 +2341,17 @@
 
   function renderCycleCountdownCard(cd) {
     if (!cd) return '';
-    const phaseZh = cd.phase === 'bull' ? '牛市' : '熊市';
+    const phaseZh = t(cd.phase === 'bull' ? '牛市' : '熊市');
     const urgent = cd.urgent || cd.days <= 30;
     const cls = urgent ? 'cycle-alert countdown urgent' : 'cycle-alert countdown';
+    const line = t('距「{label}」预估还有 {n} 天', {
+      label: escapeHtml(t(cd.label)),
+      n: `<strong style="color:var(--yellow);font-size:15px">${cd.days}</strong>`,
+    });
     return `<div class="${cls}">
-      <span style="color:var(--muted)">${phaseZh} · 转折点倒计时</span><br/>
-      距「${escapeHtml(cd.label)}」预估还有
-      <strong style="color:var(--yellow);font-size:15px">${cd.days}</strong> 天
-      <span style="color:var(--muted)">（${String(cd.date).slice(0, 10)}）</span>
+      <span style="color:var(--muted)">${t('{phase} · 转折点倒计时', { phase: phaseZh })}</span><br/>
+      ${line}
+      <span style="color:var(--muted)">${t('（{v}）', { v: String(cd.date).slice(0, 10) })}</span>
     </div>`;
   }
 
@@ -2354,7 +2387,7 @@
       renderCyclePanel(data);
       return data;
     } catch (e) {
-      if ($('cycleSummaryLine')) $('cycleSummaryLine').textContent = `加载失败：${e.message}`;
+      if ($('cycleSummaryLine')) $('cycleSummaryLine').textContent = t('加载失败：{msg}', { msg: e.message });
       return null;
     }
   }
@@ -2395,9 +2428,9 @@
     if ($('schedClocks')) {
       $('schedClocks').innerHTML = clocks.map((c) => `
         <div class="sched-clock${c.is_local ? ' local' : ''}">
-          <div class="label">${escapeHtml(c.label)}${c.is_local ? ' · 你这里' : ''}</div>
+          <div class="label">${escapeHtml(t(c.label))}${c.is_local ? t(' · 你这里') : ''}</div>
           <div class="time">${escapeHtml(c.time || '—')}</div>
-          <div class="meta">周${escapeHtml(c.weekday || '')} · ${escapeHtml(c.offset || '')}</div>
+          <div class="meta">${escapeHtml(t('周' + (c.weekday || '')))} · ${escapeHtml(c.offset || '')}</div>
         </div>
       `).join('');
     }
@@ -2407,18 +2440,18 @@
     const active = (sess.active || [])[0];
     if ($('schedNextSession')) {
       if (active) {
-        $('schedNextSession').textContent = `${active.name} · 进行中`;
+        $('schedNextSession').textContent = t('{name} · 进行中', { name: t(active.name) });
         $('schedNextSession').style.color = 'var(--yellow)';
         if ($('schedNextSessionSub')) {
           $('schedNextSessionSub').textContent =
-            `${active.hint || ''} · 还剩 ${fmtCountdown(active.ends_in_sec)}`;
+            `${t(active.hint || '')} · ${t('还剩 {t}', { t: fmtCountdown(active.ends_in_sec) })}`;
         }
       } else if (up) {
-        $('schedNextSession').textContent = up.name;
+        $('schedNextSession').textContent = t(up.name);
         $('schedNextSession').style.color = 'var(--text)';
         if ($('schedNextSessionSub')) {
           $('schedNextSessionSub').textContent =
-            `${up.hint || ''} · ${fmtCountdown(up.starts_in_sec)} 后开始`;
+            `${t(up.hint || '')} · ${t('{t} 后开始', { t: fmtCountdown(up.starts_in_sec) })}`;
         }
       } else {
         $('schedNextSession').textContent = '—';
@@ -2435,7 +2468,7 @@
           : `${fund.funding_rate_pct >= 0 ? '+' : ''}${fund.funding_rate_pct}%/8h`;
         if ($('schedFundingSub')) {
           $('schedFundingSub').textContent =
-            `${fund.symbol || ''} · ${rate} · 本地 ${fund.local_time || fund.beijing || '—'}`;
+            `${fund.symbol || ''} · ${rate} · ${t('本地 {t}', { t: fund.local_time || fund.beijing || '—' })}`;
         }
       } else {
         $('schedFunding').textContent = '—';
@@ -2450,7 +2483,7 @@
         $('schedNextMacro').textContent = nextM.title;
         if ($('schedNextMacroSub')) {
           $('schedNextMacroSub').textContent =
-            `${nextM.country} · ${nextM.impact} · 本地 ${nextM.local_time || nextM.beijing} · ${fmtCountdown(nextM.starts_in_sec)}`;
+            `${nextM.country} · ${nextM.impact} · ${t('本地 {t}', { t: nextM.local_time || nextM.beijing })} · ${fmtCountdown(nextM.starts_in_sec)}`;
         }
       } else {
         $('schedNextMacro').textContent = '本周暂无';
@@ -2466,12 +2499,12 @@
       } else {
         sessEl.innerHTML = rows.slice(0, 8).map((w) => {
           const eta = w.active
-            ? `剩余 ${fmtCountdown(w.ends_in_sec)}`
+            ? t('剩余 {t}', { t: fmtCountdown(w.ends_in_sec) })
             : fmtCountdown(w.starts_in_sec);
           return `<div class="sched-row${w.active ? ' active' : ''}">
             <div>
-              <div class="title">${escapeHtml(w.name)}${w.active ? '<span class="sched-badge">进行中</span>' : ''}</div>
-              <div class="meta">${escapeHtml(w.hint || '')}</div>
+              <div class="title">${escapeHtml(t(w.name))}${w.active ? '<span class="sched-badge">进行中</span>' : ''}</div>
+              <div class="meta">${escapeHtml(t(w.hint || ''))}</div>
             </div>
             <div class="eta">${escapeHtml(eta)}</div>
           </div>`;
@@ -2493,10 +2526,13 @@
         macroEl.innerHTML = head + rows.slice(0, 12).map((e) => {
           const eta = upcoming.length
             ? fmtCountdown(e.starts_in_sec)
-            : '已过';
+            : t('已过');
           const when = e.local_time || e.beijing || '';
-          const extra = [e.forecast && `预期 ${e.forecast}`, e.previous && `前值 ${e.previous}`, e.actual && `公布 ${e.actual}`]
-            .filter(Boolean).join(' · ');
+          const extra = [
+            e.forecast && t('预期 {v}', { v: e.forecast }),
+            e.previous && t('前值 {v}', { v: e.previous }),
+            e.actual && t('公布 {v}', { v: e.actual }),
+          ].filter(Boolean).join(' · ');
           return `<div class="sched-row">
             <div>
               <div class="title">${escapeHtml(e.country)} · ${escapeHtml(e.title)}</div>
@@ -2511,13 +2547,13 @@
     if ($('schedMeta')) {
       const st = data.settings || {};
       const parts = [
-        `本地 ${data.now_local || data.now_beijing || '—'}`,
+        t('本地 {t}', { t: data.now_local || data.now_beijing || '—' }),
         data.local_tz || browserLocalTz(),
-        st.tg ? 'TG 提醒开' : 'TG 提醒关',
-        `时段提前 ${st.session_leads || '—'}m`,
-        `资金费提前 ${st.funding_leads || '—'}m`,
+        t(st.tg ? 'TG 提醒开' : 'TG 提醒关'),
+        t('时段提前 {v}m', { v: st.session_leads || '—' }),
+        t('资金费提前 {v}m', { v: st.funding_leads || '—' }),
       ];
-      if (macro.updated_at) parts.push(`日历 ${String(macro.updated_at).slice(11, 19)} UTC`);
+      if (macro.updated_at) parts.push(t('日历 {t} UTC', { t: String(macro.updated_at).slice(11, 19) }));
       $('schedMeta').textContent = parts.join(' · ');
     }
   }
@@ -2535,7 +2571,7 @@
       renderSchedulePage(data);
     } catch (e) {
       console.warn('loadSchedulePage', e);
-      if ($('schedMeta')) $('schedMeta').textContent = '加载失败：' + e;
+      if ($('schedMeta')) $('schedMeta').textContent = t('加载失败：{msg}', { msg: e });
     }
   }
 
@@ -2591,7 +2627,7 @@
       const r = await fetch('/api/monitor/research-ideas' + (refresh ? '?refresh=1' : ''));
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        box.textContent = '生成失败：' + (err.detail || r.status);
+        box.textContent = t('生成失败：{msg}', { msg: err.detail || r.status });
         return;
       }
       const d = (await r.json()).research;
@@ -2610,7 +2646,7 @@
         meta.textContent = bits.join(' · ');
       }
     } catch (e) {
-      box.textContent = '研究假设加载失败：' + e;
+      box.textContent = t('研究假设加载失败：{msg}', { msg: e });
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '生成假设'; }
     }
@@ -2639,12 +2675,12 @@
       if (meta) {
         const bits = [];
         if (d.generated_at) bits.push(d.generated_at);
-        bits.push(d.source === 'llm' ? (d.model || 'llm') : '模板降级');
+        bits.push(d.source === 'llm' ? (d.model || 'llm') : t('模板降级'));
         if (d.latency_ms) bits.push((d.latency_ms / 1000).toFixed(1) + 's');
         meta.textContent = bits.join(' · ');
       }
     } catch (e) {
-      box.textContent = '日报加载失败：' + e;
+      box.textContent = t('日报加载失败：{msg}', { msg: e });
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '生成日报'; }
     }
@@ -2659,7 +2695,7 @@
       const data = await r.json();
       if (meta) {
         meta.textContent = data.enabled
-          ? `哨兵运行中 · 每 ${data.interval_min} 分钟 · TG 推送门槛 ${data.min_severity}`
+          ? t('哨兵运行中 · 每 {n} 分钟 · TG 推送门槛 {sev}', { n: data.interval_min, sev: data.min_severity })
           : '哨兵未启用（MONITOR_NEWS_ENABLED=false）';
       }
       const rows = data.events || [];
@@ -2677,9 +2713,9 @@
           ev.ts_utc ? escapeHtml(ev.ts_utc) + ' UTC' : '',
           escapeHtml(ev.source || ''),
           ev.category && ev.category !== 'unrated' ? escapeHtml(ev.category) : '',
-          ev.affected ? '影响 ' + escapeHtml(ev.affected) : '',
+          ev.affected ? t('影响 {v}', { v: escapeHtml(ev.affected) }) : '',
           ev.reason ? escapeHtml(ev.reason) : '',
-          ev.pushed ? '已推TG' : '',
+          ev.pushed ? t('已推TG') : '',
         ].filter(Boolean).join(' · ');
         return `<div style="display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #1e2329;padding:9px 4px;">
           <span style="flex:none;font-size:10px;font-weight:600;border-radius:4px;padding:2px 7px;margin-top:1px;text-transform:uppercase;${style}">${escapeHtml(sev)}</span>
@@ -2690,7 +2726,7 @@
         </div>`;
       }).join('');
     } catch (e) {
-      list.innerHTML = `<div class="muted" style="padding:14px 10px;font-size:12px;">事件加载失败：${escapeHtml(String(e))}</div>`;
+      list.innerHTML = `<div class="muted" style="padding:14px 10px;font-size:12px;">${t('事件加载失败：{msg}', { msg: escapeHtml(String(e)) })}</div>`;
     }
   }
 
@@ -2762,6 +2798,12 @@
   function spotUsdt(n) {
     const v = Number(n);
     if (!Number.isFinite(v)) return '—';
+    if (LANG === 'en') {
+      if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+      if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+      if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+      return String(Math.round(v));
+    }
     if (v >= 1e8) return (v / 1e8).toFixed(2) + ' 亿';
     if (v >= 1e4) return Math.round(v / 1e4) + ' 万';
     return String(Math.round(v));
@@ -2769,12 +2811,14 @@
   function renderSpot(data) {
     const scanned = data.scanned_at ? new Date(data.scanned_at) : null;
     $('spotUpdated').textContent = scanned && !isNaN(scanned)
-      ? '扫描于 ' + scanned.toLocaleTimeString('zh-CN', { hour12: false })
-      : '尚未扫描';
+      ? t('扫描于 {t}', { t: scanned.toLocaleTimeString(LOCALE, { hour12: false }) })
+      : t('尚未扫描');
     const freshN = (data.fresh_alerts || []).length;
     const roundN = (data.round_alerts || []).length;
     $('spotStats').innerHTML = [
-      ['观察池', data.watched || 0, data.enabled ? `后台每 ${Math.max(1, Math.round((data.interval_seconds || 900) / 60))} 分钟` : '后台已关'],
+      ['观察池', data.watched || 0, data.enabled
+        ? t('后台每 {n} 分钟', { n: Math.max(1, Math.round((data.interval_seconds || 900) / 60)) })
+        : '后台已关'],
       ['本轮命中', roundN, '含仍在冷却的'],
       ['新提醒', freshN, '这轮过了冷却的'],
     ].map(([k, v, s]) => `<div class="paper-stat"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
@@ -2785,7 +2829,7 @@
       err.textContent = data.error;
     } else if (skipped) {
       err.classList.remove('hidden');
-      err.textContent = `有 ${skipped} 个交易对这轮没读到 K 线`;
+      err.textContent = t('有 {n} 个交易对这轮没读到 K 线', { n: skipped });
     } else {
       err.classList.add('hidden');
       err.textContent = '';
@@ -2811,7 +2855,7 @@
     $('spotAlerts').innerHTML = alerts.length ? alerts.map((a) => {
       const up = a.direction === 'up';
       const when = a.time ? new Date(a.time) : null;
-      const clock = when && !isNaN(when) ? when.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+      const clock = when && !isNaN(when) ? when.toLocaleString(LOCALE, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
       return `<div class="paper-ev">
         <span class="t">${_esc(clock)}</span>
         <span class="k ${up ? 'fill' : 'stop'}">${_esc(a.symbol)}</span>
@@ -2859,8 +2903,8 @@
   const _px = (n) => { const v = Number(n); if (!Number.isFinite(v)) return '—'; return v >= 1000 ? _pf(v, 2) : v >= 10 ? _pf(v, 2) : v >= 1 ? _pf(v, 3) : _pf(v, 6); };
   const _usd = (n) => { const v = Number(n); if (!Number.isFinite(v)) return '—'; return (v >= 0 ? '+' : '−') + _pf(Math.abs(v), 1) + 'U'; };
   const _cls = (n) => Number(n) > 0 ? 'pos' : Number(n) < 0 ? 'neg' : '';
-  const _ts = (iso) => { if (!iso) return '—'; const d = new Date(iso); if (isNaN(d)) return iso; return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); };
-  const _esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const _ts = (iso) => { if (!iso) return '—'; const d = new Date(iso); if (isNaN(d)) return iso; return d.toLocaleString(LOCALE, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); };
+  const _esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const _sym = (s) => String(s || '').replace('/USDT', '');
   const REASON_ZH = { stop: '止损', be_stop: '保本止损', trail_boll_mid: '破 BOLL 中轨', trail_ema12h: '破 12h EMA6', timeout: '超时', fuse: '熔断' };
   const KIND_ZH = { submit: '挂单', fill: '成交', tp1: '一半止盈', stop: '止损', exit: '离场', expire: '过期', reject: '拒单', fuse: '熔断' };
@@ -2874,50 +2918,63 @@
       $('paperStats').innerHTML = `<div class="paper-stat"><div class="k">加载失败</div><div class="s">${_esc(e)}</div></div>`;
       return;
     }
-    $('paperUpdated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    $('paperUpdated').textContent = t('更新于 {t}', { t: new Date().toLocaleTimeString(LOCALE, { hour12: false }) });
     if (!data.enabled || !data.report) {
       $('paperStats').innerHTML = '<div class="paper-stat"><div class="k">纸面交易未启用</div><div class="s">PAPER_ENABLED=false</div></div>';
       return;
     }
     const rep = data.report; const st = rep.stats || {};
-    $('paperSubline').textContent = `${data.strategy} · 币种 ${(data.symbols || []).map(_sym).join(' / ')} · 起始 ${_pf(rep.equity0, 0)}U · 状态文件 ${data.state_path}`;
+    $('paperSubline').textContent = t('{strategy} · 币种 {syms} · 起始 {eq}U · 状态文件 {path}', {
+      strategy: t(data.strategy),
+      syms: (data.symbols || []).map(_sym).join(' / '),
+      eq: _pf(rep.equity0, 0),
+      path: data.state_path,
+    });
     const pf = st.profit_factor === null || st.profit_factor === undefined ? '—' : _pf(st.profit_factor, 2);
+    const winRate = st.win_rate === null || st.win_rate === undefined ? '—' : _pf(st.win_rate * 100, 0) + '%';
     $('paperStats').innerHTML = [
-      ['权益（含浮盈）', `<span class="${_cls(rep.equity_mtm - rep.equity0)}">${_pf(rep.equity_mtm, 0)}U</span>`, `已实现 ${_pf(rep.equity, 0)}U · 浮盈 <span class="${_cls(rep.unrealized)}">${_usd(rep.unrealized)}</span>`],
-      ['累计收益', `<span class="${_cls(rep.return_pct)}">${fmtPct(rep.return_pct, 2)}</span>`, `净盈亏 ${_usd(st.net_total)} · 手续费 ${_pf(st.fees_total, 1)}U`],
-      ['今日盈亏', `<span class="${_cls(rep.day_pnl)}">${_usd(rep.day_pnl)}</span>`, `${fmtPct(rep.day_pnl_pct, 2)} · 熔断线 −${_pf(rep.fuse.daily_pct, 1)}%`],
-      ['已平仓', `${st.closed_n ?? 0} 笔`, `胜率 ${st.win_rate === null || st.win_rate === undefined ? '—' : _pf(st.win_rate * 100, 0) + '%'} · PF ${pf}`],
-      ['均盈 / 均亏', `<span class="pos">${st.avg_win == null ? '—' : _usd(st.avg_win)}</span> / <span class="neg">${st.avg_loss == null ? '—' : _usd(st.avg_loss)}</span>`, `均笔 ${st.avg_net == null ? '—' : _usd(st.avg_net)}`],
-      ['仓位', `${rep.limits.open} / ${rep.limits.max_positions}`, `挂单 ${rep.limits.pending} · 单笔风险 ${_pf(rep.cfg.risk_pct, 1)}% · 杠杆上限 ${_pf(rep.cfg.max_leverage, 0)}x`],
+      ['权益（含浮盈）', `<span class="${_cls(rep.equity_mtm - rep.equity0)}">${_pf(rep.equity_mtm, 0)}U</span>`,
+        t('已实现 {a}U · 浮盈 {b}', { a: _pf(rep.equity, 0), b: `<span class="${_cls(rep.unrealized)}">${_usd(rep.unrealized)}</span>` })],
+      ['累计收益', `<span class="${_cls(rep.return_pct)}">${fmtPct(rep.return_pct, 2)}</span>`,
+        t('净盈亏 {a} · 手续费 {b}U', { a: _usd(st.net_total), b: _pf(st.fees_total, 1) })],
+      ['今日盈亏', `<span class="${_cls(rep.day_pnl)}">${_usd(rep.day_pnl)}</span>`,
+        t('{a} · 熔断线 −{b}%', { a: fmtPct(rep.day_pnl_pct, 2), b: _pf(rep.fuse.daily_pct, 1) })],
+      ['已平仓', t('{n} 笔', { n: st.closed_n ?? 0 }), t('胜率 {w} · PF {pf}', { w: winRate, pf })],
+      ['均盈 / 均亏', `<span class="pos">${st.avg_win == null ? '—' : _usd(st.avg_win)}</span> / <span class="neg">${st.avg_loss == null ? '—' : _usd(st.avg_loss)}</span>`,
+        t('均笔 {v}', { v: st.avg_net == null ? '—' : _usd(st.avg_net) })],
+      ['仓位', `${rep.limits.open} / ${rep.limits.max_positions}`,
+        t('挂单 {p} · 单笔风险 {r}% · 杠杆上限 {l}x', { p: rep.limits.pending, r: _pf(rep.cfg.risk_pct, 1), l: _pf(rep.cfg.max_leverage, 0) })],
     ].map(([k, v, s]) => `<div class="paper-stat"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
 
     const fuse = $('paperFuse');
-    if (rep.fuse.paused) { fuse.classList.remove('hidden'); fuse.textContent = `⚠ 当日回撤触发熔断，已清仓并暂停开新仓，至 ${_ts(rep.fuse.paused_until)}`; }
-    else fuse.classList.add('hidden');
+    if (rep.fuse.paused) {
+      fuse.classList.remove('hidden');
+      fuse.textContent = t('⚠ 当日回撤触发熔断，已清仓并暂停开新仓，至 {t}', { t: _ts(rep.fuse.paused_until) });
+    } else fuse.classList.add('hidden');
 
     const posBody = $('paperPosTbl').querySelector('tbody');
-    $('paperPosCount').textContent = rep.positions.length ? `${rep.positions.length} 个` : '';
+    $('paperPosCount').textContent = rep.positions.length ? t('{n} 个', { n: rep.positions.length }) : '';
     posBody.innerHTML = rep.positions.length ? rep.positions.map((p) => `
       <tr>
         <td>${_sym(p.symbol)} <span class="paper-tag">${p.side === 'long' ? '多' : '空'}</span>${p.tp1_done ? '<span class="paper-tag ok">已止盈一半 · 保本</span>' : ''}</td>
-        <td>${_pf(p.qty, 4)}<div class="muted" style="font-size:10px">名义 ${_pf(p.notional, 0)}U</div></td>
+        <td>${_pf(p.qty, 4)}<div class="muted" style="font-size:10px">${t('名义 {v}U', { v: _pf(p.notional, 0) })}</div></td>
         <td>${_px(p.entry)}</td>
         <td>${_px(p.mark)}</td>
         <td class="${_cls(p.unrealized)}">${_usd(p.unrealized)}<div style="font-size:10px">${fmtPct(p.unrealized_pct, 2)}</div></td>
-        <td>${_px(p.stop)}<div class="muted" style="font-size:10px">距 ${p.stop_dist_pct == null ? '—' : _pf(p.stop_dist_pct, 1) + '%'}</div></td>
-        <td>${p.tp1_done ? '<span class="muted">已完成</span>' : `${_px(p.tp1)}<div class="muted" style="font-size:10px">差 ${p.tp1_dist_pct == null ? '—' : _pf(p.tp1_dist_pct, 1) + '%'}</div>`}</td>
+        <td>${_px(p.stop)}<div class="muted" style="font-size:10px">${t('距 {v}', { v: p.stop_dist_pct == null ? '—' : _pf(p.stop_dist_pct, 1) + '%' })}</div></td>
+        <td>${p.tp1_done ? '<span class="muted">已完成</span>' : `${_px(p.tp1)}<div class="muted" style="font-size:10px">${t('差 {v}', { v: p.tp1_dist_pct == null ? '—' : _pf(p.tp1_dist_pct, 1) + '%' })}</div>`}</td>
         <td class="${_cls(p.realized)}">${_usd(p.realized)}</td>
-        <td>${p.held_hours == null ? '—' : _pf(p.held_hours, 0) + 'h'}<div class="muted" style="font-size:10px">上限 ${p.max_hold_hours}h</div></td>
+        <td>${p.held_hours == null ? '—' : _pf(p.held_hours, 0) + 'h'}<div class="muted" style="font-size:10px">${t('上限 {v}h', { v: p.max_hold_hours })}</div></td>
         <td class="muted">${_ts(p.opened_at)}</td>
       </tr>`).join('') : '<tr><td colspan="10" class="muted">当前无持仓</td></tr>';
 
     const pendBody = $('paperPendTbl').querySelector('tbody');
-    $('paperPendCount').textContent = rep.pending.length ? `${rep.pending.length} 个 · 限价未触及则等待，到期自动撤销` : '';
+    $('paperPendCount').textContent = rep.pending.length ? t('{n} 个 · 限价未触及则等待，到期自动撤销', { n: rep.pending.length }) : '';
     pendBody.innerHTML = rep.pending.length ? rep.pending.map((o) => `
       <tr>
-        <td>${_sym(o.symbol)} <span class="paper-tag">限价${o.side === 'long' ? '多' : '空'}</span></td>
+        <td>${_sym(o.symbol)} <span class="paper-tag">${t(o.side === 'long' ? '限价多' : '限价空')}</span></td>
         <td>${_px(o.entry)}</td>
-        <td>${_px(o.mark)}<div class="muted" style="font-size:10px">${o.dist_pct == null ? '' : (o.dist_pct >= 0 ? '还差回踩 ' : '已低于 ') + _pf(Math.abs(o.dist_pct), 2) + '%'}</div></td>
+        <td>${_px(o.mark)}<div class="muted" style="font-size:10px">${o.dist_pct == null ? '' : t(o.dist_pct >= 0 ? '还差回踩 {v}' : '已低于 {v}', { v: _pf(Math.abs(o.dist_pct), 2) + '%' })}</div></td>
         <td>${_pf(o.qty, 4)}<div class="muted" style="font-size:10px">${_pf(o.notional, 0)}U</div></td>
         <td>${_px(o.stop)}<div class="muted" style="font-size:10px">${_pf(o.stop_pct, 1)}%</div></td>
         <td>${_px(o.tp1)}</td>
@@ -2927,8 +2984,8 @@
       </tr>`).join('') : '<tr><td colspan="9" class="muted">当前无挂单</td></tr>';
 
     const clBody = $('paperClosedTbl').querySelector('tbody');
-    const byReason = Object.entries(st.by_reason || {}).map(([k, v]) => `${REASON_ZH[k] || k} ${v}`).join(' · ');
-    $('paperClosedMeta').textContent = st.closed_n ? `${st.closed_n} 笔 · ${byReason}` : '';
+    const byReason = Object.entries(st.by_reason || {}).map(([k, v]) => `${t(REASON_ZH[k] || k)} ${v}`).join(' · ');
+    $('paperClosedMeta').textContent = st.closed_n ? `${t('{n} 笔', { n: st.closed_n })} · ${byReason}` : '';
     clBody.innerHTML = rep.closed.length ? rep.closed.map((c) => `
       <tr>
         <td>${_sym(c.symbol)}${c.tp1_done ? '<span class="paper-tag ok">TP1</span>' : ''}</td>
@@ -2953,10 +3010,11 @@
 
     const c = rep.cfg;
     $('paperCfg').innerHTML = [
-      ['单笔风险', `${c.risk_pct}% 权益`], ['杠杆上限', `${c.max_leverage}x`], ['入场', `回踩 ${c.entry_pref}`],
+      ['单笔风险', t('{v}% 权益', { v: c.risk_pct })], ['杠杆上限', `${c.max_leverage}x`], ['入场', t('回踩 {v}', { v: c.entry_pref })],
       ['最小止损', `${_pf(c.min_stop_pct * 100, 1)}%`], ['最小 RR', c.min_rr], ['一半止盈比例', `${_pf(c.tp1_frac * 100, 0)}%`],
-      ['余仓离场', c.exit_rule === 'boll_mid' ? '4h 收盘 < BOLL 中轨' : c.exit_rule], ['挂单有效', `${c.order_ttl_bars} 根 4h`], ['最长持有', `${c.max_hold_bars} 根 4h`],
-      ['当日熔断', `−${rep.fuse.daily_pct}%（含浮盈）`], ['费率', 'maker 0.02% · taker 0.05% · 滑点 0.02%'],
+      ['余仓离场', c.exit_rule === 'boll_mid' ? t('4h 收盘 < BOLL 中轨') : c.exit_rule],
+      ['挂单有效', t('{n} 根 4h', { n: c.order_ttl_bars })], ['最长持有', t('{n} 根 4h', { n: c.max_hold_bars })],
+      ['当日熔断', t('−{v}%（含浮盈）', { v: rep.fuse.daily_pct })], ['费率', t('maker 0.02% · taker 0.05% · 滑点 0.02%')],
     ].map(([k, v]) => `<span><b style="color:var(--text);font-weight:500">${k}</b> ${v}</span>`).join('');
   }
   $('btnPaperRefresh')?.addEventListener('click', loadPaperPage);
@@ -2987,7 +3045,7 @@
       strategiesCache = data.strategies || [];
       renderStrategyGrid(strategiesCache);
     } catch (e) {
-      grid.innerHTML = `<div class="text-xs" style="color:var(--red)">加载失败：${escapeHtml(e.message)}</div>`;
+      grid.innerHTML = `<div class="text-xs" style="color:var(--red)">${t('加载失败：{msg}', { msg: escapeHtml(e.message) })}</div>`;
     }
   }
 
@@ -3009,10 +3067,10 @@
       }
       return `<div class="strategy-card">
         <div class="sc-head">
-          <span class="sc-name">${escapeHtml(s.name)}</span>
-          <span class="sc-kind ${kindCls}">${escapeHtml(s.kind_label || s.kind)}</span>
+          <span class="sc-name">${escapeHtml(t(s.name))}</span>
+          <span class="sc-kind ${kindCls}">${escapeHtml(t(s.kind_label || s.kind))}</span>
         </div>
-        <div class="sc-desc">${escapeHtml(s.description)}</div>
+        <div class="sc-desc">${escapeHtml(t(s.description))}</div>
         ${s.cli ? `<div class="sc-cli">${escapeHtml(s.cli)}</div>` : ''}
         <div class="sc-actions">${actions || '<span class="text-[11px]" style="color:var(--muted)">常驻盯盘自动评估</span>'}</div>
       </div>`;
@@ -3141,7 +3199,7 @@
       const rep = data.report || {};
       const regimes = rep.regimes || {};
       let html = '<table><tbody>';
-      html += `<tr><th>区间</th><td>${escapeHtml((data.range?.start || '').slice(0, 10))} → ${escapeHtml((data.range?.end || '').slice(0, 10))}（${data.range?.bars || '—'} 根）</td></tr>`;
+      html += `<tr><th>区间</th><td>${escapeHtml((data.range?.start || '').slice(0, 10))} → ${escapeHtml((data.range?.end || '').slice(0, 10))}${t('（{n} 根）', { n: data.range?.bars || '—' })}</td></tr>`;
       html += `<tr><th>总收益（复利）</th><td>${fmtBtPct(rep.total_return_pct)}</td></tr>`;
       html += `<tr><th>年化 CAGR</th><td>${fmtBtPct(rep.cagr_pct)}</td></tr>`;
       html += `<tr><th>最大回撤</th><td><span class="neg">-${Math.abs(Number(rep.max_drawdown_pct) || 0).toFixed(1)}%</span></td></tr>`;
@@ -3152,16 +3210,18 @@
       html += `<tr><th>熊市段贡献</th><td>${fmtBtPct(regimes.bear)}</td></tr>`;
       html += `<tr><th>震荡段贡献</th><td>${fmtBtPct(regimes.chop)}</td></tr>`;
       if (data.oos) {
-        html += `<tr><th>样本外收益</th><td>${fmtBtPct(data.oos.total_return_pct)}（回撤 ${Number(data.oos.max_drawdown_pct || 0).toFixed(1)}%）</td></tr>`;
+        html += `<tr><th>样本外收益</th><td>${fmtBtPct(data.oos.total_return_pct)}${t('（回撤 {v}%）', { v: Number(data.oos.max_drawdown_pct || 0).toFixed(1) })}</td></tr>`;
       }
       if (data.data_check) {
         const dc = data.data_check;
-        const mark = dc.ok ? '通过' : '有缺口';
-        html += `<tr><th>K 线自检</th><td>${mark} · 缺 ${dc.missing_bars} 根 · 已落库 ${dc.stored_bars} 根</td></tr>`;
+        const mark = t(dc.ok ? '通过' : '有缺口');
+        html += `<tr><th>K 线自检</th><td>${t('{mark} · 缺 {a} 根 · 已落库 {b} 根', { mark, a: dc.missing_bars, b: dc.stored_bars })}</td></tr>`;
       }
       if (data.walk_forward) {
         const w = data.walk_forward;
-        html += `<tr><th>滚动样本外</th><td>${escapeHtml(w.verdict)} · 通过 ${w.n_pass}/${w.n_windows} · 最长连续 ${w.max_consecutive}（门槛 ${w.consecutive_required}）</td></tr>`;
+        html += `<tr><th>滚动样本外</th><td>${t('{verdict} · 通过 {p}/{n} · 最长连续 {c}（门槛 {r}）', {
+          verdict: escapeHtml(t(w.verdict)), p: w.n_pass, n: w.n_windows, c: w.max_consecutive, r: w.consecutive_required,
+        })}</td></tr>`;
       }
       if (Array.isArray(data.cost_sensitivity) && data.cost_sensitivity.length) {
         const bits = data.cost_sensitivity.map((row) => `${row.scale}× ${fmtBtPct(row.total_return_pct)}`).join(' · ');
@@ -3169,13 +3229,17 @@
       }
       if (data.deflated_sharpe && data.deflated_sharpe.dsr_prob != null) {
         const d = data.deflated_sharpe;
-        html += `<tr><th>Deflated Sharpe</th><td>${escapeHtml(d.verdict)} · 概率 ${Number(d.dsr_prob).toFixed(2)}（候选 ${d.n_trials}）</td></tr>`;
+        html += `<tr><th>Deflated Sharpe</th><td>${t('{verdict} · 概率 {p}（候选 {n}）', {
+          verdict: escapeHtml(t(d.verdict)), p: Number(d.dsr_prob).toFixed(2), n: d.n_trials,
+        })}</td></tr>`;
       }
       if (data.pbo && data.pbo.pbo != null) {
         const p = data.pbo;
-        html += `<tr><th>PBO</th><td>${escapeHtml(p.verdict)} · ${Number(p.pbo).toFixed(2)}（${p.n_strategies} 个参数邻域）</td></tr>`;
+        html += `<tr><th>PBO</th><td>${t('{verdict} · {v}（{n} 个参数邻域）', {
+          verdict: escapeHtml(t(p.verdict)), v: Number(p.pbo).toFixed(2), n: p.n_strategies,
+        })}</td></tr>`;
       } else if (data.pbo && data.pbo.reason) {
-        html += `<tr><th>PBO</th><td>${escapeHtml(data.pbo.reason)}</td></tr>`;
+        html += `<tr><th>PBO</th><td>${escapeHtml(t(data.pbo.reason))}</td></tr>`;
       }
       html += '</tbody></table>';
       box.innerHTML = html;
@@ -3183,7 +3247,7 @@
       renderBtCurve(data.equity_curve);
       if (status) status.textContent = '完成';
     } catch (e) {
-      if (status) status.textContent = `失败：${e.message}`;
+      if (status) status.textContent = t('失败：{msg}', { msg: e.message });
       toast('回测失败', String(e.message), 'short');
     } finally {
       btn.disabled = false;
@@ -3232,11 +3296,11 @@
         if ($('daemonBadge')) {
           const tfs = (data.timeframes || daemonTimeframes).join('/');
           const n = (data.symbols || watchSymbols).length;
-          $('daemonBadge').textContent = `常驻 ${n}币·${tfs}`;
+          $('daemonBadge').textContent = t('常驻 {n}币·{tfs}', { n, tfs });
           $('daemonBadge').classList.add('ok');
         }
         if (!silent) {
-          const msg = data.message || `已同步 ${(data.symbols || []).length} 品种`;
+          const msg = data.message || t('已同步 {n} 品种', { n: (data.symbols || []).length });
           toast('常驻已热更新', msg, 'long');
         }
       })
@@ -3388,7 +3452,7 @@
         timezone: 'Asia/Shanghai',
         theme: 'dark',
         style: '1',
-        locale: 'zh_CN',
+        locale: LANG === 'en' ? 'en' : 'zh_CN',
         toolbar_bg: '#000000',
         enable_publishing: false,
         hide_top_toolbar: false,
@@ -3493,10 +3557,10 @@
     }
   }
 
-  function trendZh(t) {
-    if (t === 'up') return '偏多';
-    if (t === 'down') return '偏空';
-    return '震荡';
+  function trendZh(trend) {
+    if (trend === 'up') return t('偏多');
+    if (trend === 'down') return t('偏空');
+    return t('震荡');
   }
 
   function zoneClass(ctx) {
@@ -3535,16 +3599,16 @@
   function riskText(ctx) {
     const jr = ctx?.market_regime || {};
     if (jr.below_waist) {
-      return `已近腰斩线 ${fmtNum(jr.waist_line)}，穷寇莫追，不再加空。`;
+      return t('已近腰斩线 {v}，穷寇莫追，不再加空。', { v: fmtNum(jr.waist_line) });
     }
     const z = ctx?.zone || {};
     const s1 = (ctx?.supports || [])[0];
     const r1 = (ctx?.resistances || [])[0];
-    if (z.dip_buy && r1) return `上方先看阻力 ${fmtNum(r1.price)}，别在区内追多。`;
-    if (z.try_short && s1) return `下方先看支撑 ${fmtNum(s1.price)}，别贴着支撑追空。`;
-    if (ctx?.trend === 'up' && r1) return `已离理想低吸区，等回踩或突破 ${fmtNum(r1.price)} 后再看。`;
-    if (ctx?.trend === 'down' && r1) return `当前更适合等反弹靠近 ${fmtNum(r1.price)} 再决策。`;
-    return '结构不清晰，仓位宜轻。';
+    if (z.dip_buy && r1) return t('上方先看阻力 {v}，别在区内追多。', { v: fmtNum(r1.price) });
+    if (z.try_short && s1) return t('下方先看支撑 {v}，别贴着支撑追空。', { v: fmtNum(s1.price) });
+    if (ctx?.trend === 'up' && r1) return t('已离理想低吸区，等回踩或突破 {v} 后再看。', { v: fmtNum(r1.price) });
+    if (ctx?.trend === 'down' && r1) return t('当前更适合等反弹靠近 {v} 再决策。', { v: fmtNum(r1.price) });
+    return t('结构不清晰，仓位宜轻。');
   }
 
   function renderLevelBoard() {
@@ -3566,8 +3630,8 @@
     empty?.classList.add('hidden');
     const liveJr = rows[0]?.market_regime || {};
     if (hint) hint.textContent = liveJr.regime_zh
-      ? `${active.split('/')[0]} · ${liveJr.regime_zh}`
-      : `${active.split('/')[0]} · 当前选中币`;
+      ? `${active.split('/')[0]} · ${t(liveJr.regime_zh)}`
+      : t('{sym} · 当前选中币', { sym: active.split('/')[0] });
     grid.innerHTML = rows.map((ctx) => {
       const sym = normalizeSymbol(ctx.symbol);
       const isActive = sym === normalizeSymbol(activeSymbol);
@@ -3580,22 +3644,24 @@
       const recentAlert = alertStore.slice().reverse().find((a) => normalizeSymbol(a.symbol) === sym);
       const zCls = zoneClass(ctx);
       const reason = (z.reasons || []).slice(0, 2).join(' · ');
-      const sideZh = jr.trade_side === 'long' ? '偏多' : jr.trade_side === 'short' ? '偏空' : '';
+      const sideZh = jr.trade_side === 'long' ? t('偏多') : jr.trade_side === 'short' ? t('偏空') : '';
+      const regimeLabel = jr.regime_zh ? t(jr.regime_zh) : '';
+      const cycPct = Math.round(Math.abs(cyc.target_position) * 100);
       const chips = [
-        jr.regime_zh ? (sideZh ? `${jr.regime_zh} · ${sideZh}` : jr.regime_zh) : '',
-        jr.below_waist ? '腰斩不追空' : '',
-        jr.second_break ? '二次突破' : '',
-        jr.sub4h_pullback_fake_short ? '4h诱空' : '',
-        jr.htf_ltf_resonance ? '共振市价冲' : '',
-        cyc.target_position > 0 ? `周期 多 ${Math.round(Math.abs(cyc.target_position) * 100)}%` :
-          cyc.target_position < 0 ? `周期 空 ${Math.round(Math.abs(cyc.target_position) * 100)}%` : '周期 空仓',
-        recentAlert?.title ? `最近: ${recentAlert.title}` : '',
+        regimeLabel ? (sideZh ? `${regimeLabel} · ${sideZh}` : regimeLabel) : '',
+        jr.below_waist ? t('腰斩不追空') : '',
+        jr.second_break ? t('二次突破') : '',
+        jr.sub4h_pullback_fake_short ? t('4h诱空') : '',
+        jr.htf_ltf_resonance ? t('共振市价冲') : '',
+        cyc.target_position > 0 ? t('周期 多 {v}%', { v: cycPct }) :
+          cyc.target_position < 0 ? t('周期 空 {v}%', { v: cycPct }) : t('周期 空仓'),
+        recentAlert?.title ? t('最近: {v}', { v: t(recentAlert.title) }) : '',
       ].filter(Boolean);
       const levelRows = (label, items, tone) => (items || []).map((row, i) => {
         const d = Number(row.dist_pct);
         const dCls = row.near ? 'near' : (d >= 0 ? 'pos' : 'neg');
         return `<div class="level-row">
-          <span class="k">${label}${i + 1}</span>
+          <span class="k">${t(label)}${i + 1}</span>
           <span class="v" style="color:${tone}">${fmtNum(row.price)}</span>
           <span class="d ${dCls}">${fmtDistPct(d)}</span>
         </div>`;
@@ -3630,11 +3696,11 @@
       const stopPx = jr.nearest_support ?? (ctx.supports || [])[0]?.price;
       const tpPx = jr.tp_intraday_618 ?? jr.nearest_resistance ?? (ctx.resistances || [])[0]?.price;
       const headline = (() => {
-        const base = jr.regime_zh || z.label || '观望';
+        const base = t(jr.regime_zh || z.label || '观望');
         return sideZh ? `${base} · ${sideZh}` : base;
       })();
       const seedLine = jr.seed_style
-        ? `${seedZh[jr.seed_style] || jr.seed_style}${jr.add_mode ? ` · ${addZh[jr.add_mode] || jr.add_mode}` : ''}`
+        ? `${t(seedZh[jr.seed_style] || jr.seed_style)}${jr.add_mode ? ` · ${t(addZh[jr.add_mode] || jr.add_mode)}` : ''}`
         : '—';
       const playbook = (jr.playbook_line || '').trim();
       const playbookParas = playbook
@@ -3666,11 +3732,11 @@
           </div>
           <div class="level-summary-item">
             <span class="k">Fib 低吸区</span>
-            <span class="v">${fmtNum(longZone.low)} - ${fmtNum(longZone.high)}${longZone.inside ? ' · 区内' : ''}</span>
+            <span class="v">${fmtNum(longZone.low)} - ${fmtNum(longZone.high)}${longZone.inside ? t(' · 区内') : ''}</span>
           </div>
           <div class="level-summary-item">
             <span class="k">Fib 试空区</span>
-            <span class="v">${fmtNum(shortZone.low)} - ${fmtNum(shortZone.high)}${shortZone.inside ? ' · 区内' : ''}</span>
+            <span class="v">${fmtNum(shortZone.low)} - ${fmtNum(shortZone.high)}${shortZone.inside ? t(' · 区内') : ''}</span>
           </div>
         </div>
         ${reason ? `<div class="muted" style="font-size:10px;margin:2px 0 8px;">${escapeHtml(reason)}</div>` : ''}
@@ -3730,7 +3796,7 @@
         timeVisible: true,
         secondsVisible: false,
       },
-      localization: { locale: 'zh-CN' },
+      localization: { locale: LOCALE },
     });
 
     candleSeries = chart.addCandlestickSeries({
@@ -3921,15 +3987,15 @@
   function showHistoryBanner(sessionOrOverlay) {
     const el = $('alertLevels');
     const plan = sessionOrOverlay?.plan || sessionOrOverlay?.ai_plan || sessionOrOverlay?.baseline_plan;
-    const t = sessionOrOverlay?.time || analysisMarkUnix(sessionOrOverlay);
-    const when = t ? new Date(t * 1000).toLocaleString() : '—';
+    const markAt = sessionOrOverlay?.time || analysisMarkUnix(sessionOrOverlay);
+    const when = markAt ? new Date(markAt * 1000).toLocaleString() : '—';
     const dir = (plan?.direction || sessionOrOverlay?.direction || '').toLowerCase();
-    const dirTxt = dir === 'long' ? '多' : dir === 'short' ? '空' : '观望';
+    const dirTxt = t(dir === 'long' ? '多' : dir === 'short' ? '空' : '观望');
     const c = dir === 'long' ? 'var(--green)' : dir === 'short' ? 'var(--red)' : 'var(--yellow)';
     el.classList.remove('hidden');
     let levels = '';
     if (plan && plan.direction !== 'wait') {
-      levels = ` · 入 ${fmtNum(plan.entry_low)}–${fmtNum(plan.entry_high)} · <span style="color:var(--red)">SL ${fmtNum(plan.stop_loss)}</span> · <span style="color:var(--green)">TP ${fmtNum(plan.take_profit_1)}</span>`;
+      levels = ` · ${t('入')} ${fmtNum(plan.entry_low)}–${fmtNum(plan.entry_high)} · <span style="color:var(--red)">SL ${fmtNum(plan.stop_loss)}</span> · <span style="color:var(--green)">TP ${fmtNum(plan.take_profit_1)}</span>`;
     }
     el.innerHTML = `<span style="color:var(--yellow);font-weight:600">分析时点</span> · ${when} · <span style="color:${c}">${dirTxt}</span>${levels}`;
   }
@@ -3952,7 +4018,7 @@
     mk(plan.stop_loss, '#f6465d', 'SL');
     mk(plan.take_profit_1, '#0ecb81', 'TP');
     const entry = plan.entry_high ?? plan.entry_low ?? plan.break_level;
-    mk(entry, '#f0b90b', '入');
+    mk(entry, '#f0b90b', t('入'));
   }
 
   function showAlertBanner(alert) {
@@ -3963,13 +4029,13 @@
       return;
     }
     el.classList.remove('hidden');
-    const dir = plan.direction === 'long' ? '多' : '空';
+    const dir = t(plan.direction === 'long' ? '多' : '空');
     const c = plan.direction === 'long' ? 'var(--green)' : 'var(--red)';
     el.innerHTML = `
       <span style="color:${c};font-weight:600">${dir}</span>
-      · 入场 ${Number(plan.entry_low).toFixed(4)}–${Number(plan.entry_high).toFixed(4)}
-      · <span style="color:var(--red)">止损 ${Number(plan.stop_loss).toFixed(4)}</span>
-      · <span style="color:var(--green)">止盈 ${Number(plan.take_profit_1).toFixed(4)}</span>
+      · ${t('入场')} ${Number(plan.entry_low).toFixed(4)}–${Number(plan.entry_high).toFixed(4)}
+      · <span style="color:var(--red)">${t('止损')} ${Number(plan.stop_loss).toFixed(4)}</span>
+      · <span style="color:var(--green)">${t('止盈')} ${Number(plan.take_profit_1).toFixed(4)}</span>
       · RR ${Number(plan.rr_ratio).toFixed(2)}
     `;
   }
@@ -4001,7 +4067,7 @@
         position: long ? 'belowBar' : 'aboveBar',
         color: long ? '#0ecb81' : '#f6465d',
         shape: long ? 'arrowUp' : 'arrowDown',
-        text: long ? '多' : '空',
+        text: t(long ? '多' : '空'),
       });
     }
     if (histActive && historyOverlay.time != null) {
@@ -4012,7 +4078,7 @@
           position: 'aboveBar',
           color: '#f0b90b',
           shape: 'circle',
-          text: '分析',
+          text: t('分析'),
         });
       }
     }
@@ -4172,7 +4238,7 @@
       const nameBtn = document.createElement('button');
       nameBtn.type = 'button';
       nameBtn.textContent = sym.split('/')[0];
-      nameBtn.title = `${sym} 永续 · 点击切换`;
+      nameBtn.title = t('{sym} 永续 · 点击切换', { sym });
       nameBtn.style.cssText = 'background:transparent;border:0;color:inherit;padding:0;cursor:pointer;font-size:12px';
       nameBtn.onclick = () => setSelectedSymbol(sym);
 
@@ -4180,7 +4246,7 @@
       del.type = 'button';
       del.className = 'chip-x';
       del.textContent = '×';
-      del.title = `移除 ${sym}`;
+      del.title = t('移除 {sym}', { sym });
       del.onclick = (e) => {
         e.stopPropagation();
         removeFromWatch(sym);
@@ -4287,7 +4353,7 @@
   function cycleCountdownLine(alert) {
     const cd = alert?.cycle_countdown;
     if (!cd) return (alert?.reasons || [])[0] || '';
-    return `距「${cd.label}」预估还有 ${cd.days} 天（${String(cd.date).slice(0, 10)}）`;
+    return t('距「{label}」预估还有 {n} 天（{date}）', { label: t(cd.label), n: cd.days, date: String(cd.date).slice(0, 10) });
   }
 
   function renderAlertList() {
@@ -4305,8 +4371,8 @@
     if (!rows.length) {
       list.innerHTML = `<div class="text-xs py-2" style="color:var(--muted)">${
         dockFilterCurrent
-          ? `当前 ${activeSymbol} 暂无告警。取消勾选「仅当前币对」可看全部。`
-          : '暂无告警记录。'
+          ? t('当前 {sym} 暂无告警。取消勾选「仅当前币对」可看全部。', { sym: activeSymbol })
+          : t('暂无告警记录。')
       }</div>`;
       return;
     }
@@ -4328,10 +4394,10 @@
           <span style="color:${color};font-weight:600">${(dir || (isCycle ? 'INFO' : '')).toUpperCase()} · ${alert.symbol}</span>
           <span style="color:var(--muted)">${new Date(alert.created_at || Date.now()).toLocaleString()}</span>
         </div>
-        <div class="mt-1" style="color:var(--yellow)">${escapeHtml(alert.title || alert.rule || '告警')} · ${alert.timeframe || ''}</div>
+        <div class="mt-1" style="color:var(--yellow)">${escapeHtml(t(alert.title || alert.rule || '告警'))} · ${alert.timeframe || ''}</div>
         ${countdown ? `<div class="mt-1 font-mono" style="color:var(--text)">${escapeHtml(countdown)}</div>` : ''}
         <div class="mt-1" style="color:var(--muted)">${reasonLines.map((r) => escapeHtml(r)).join('；')}</div>
-        ${plan.stop_loss != null ? `<div class="mt-1 font-mono" style="color:var(--muted)">入 ${Number(plan.entry_low).toFixed(4)}–${Number(plan.entry_high).toFixed(4)} · SL ${Number(plan.stop_loss).toFixed(4)} · TP ${Number(plan.take_profit_1).toFixed(4)}</div>` : ''}
+        ${plan.stop_loss != null ? `<div class="mt-1 font-mono" style="color:var(--muted)">${t('入')} ${Number(plan.entry_low).toFixed(4)}–${Number(plan.entry_high).toFixed(4)} · SL ${Number(plan.stop_loss).toFixed(4)} · TP ${Number(plan.take_profit_1).toFixed(4)}</div>` : ''}
       `;
       card.onclick = () => {
         switchDock('alerts');
@@ -4365,13 +4431,13 @@
   }
 
   function statusLabel(st) {
-    return ({
+    return t(({
       created: '已建快照',
       ai_running: 'AI 中',
       ai_planned: '已出计划',
       ai_failed: 'AI 失败',
       verified: '已验证',
-    })[st] || st || '—';
+    })[st] || st || '—');
   }
 
   function renderHistoryList(sessions) {
@@ -4389,8 +4455,8 @@
     if (!rows.length) {
       box.innerHTML = `<div class="text-xs py-2" style="color:var(--muted)">${
         dockFilterCurrent
-          ? `当前 ${activeSymbol} 暂无历史。取消勾选「仅当前币对」可看全部。`
-          : '暂无历史分析。右侧点「分析」后会出现在这里。'
+          ? t('当前 {sym} 暂无历史。取消勾选「仅当前币对」可看全部。', { sym: activeSymbol })
+          : t('暂无历史分析。右侧点「分析」后会出现在这里。')
       }</div>`;
       return;
     }
@@ -4490,9 +4556,9 @@
 
   function dirLabel(d) {
     const x = (d || '').toLowerCase();
-    if (x === 'long') return 'LONG 做多';
-    if (x === 'short') return 'SHORT 做空';
-    return 'WAIT 观望';
+    if (x === 'long') return t('LONG 做多');
+    if (x === 'short') return t('SHORT 做空');
+    return t('WAIT 观望');
   }
 
   function mapChartTfToAnalyze(tf) {
@@ -4506,7 +4572,7 @@
 
   function syncAnalyzeHeader() {
     if ($('aiSymbolLabel')) {
-      $('aiSymbolLabel').textContent = `${activeSymbol.replace('/', '')} 永续`;
+      $('aiSymbolLabel').textContent = t('{sym} 永续', { sym: activeSymbol.replace('/', '') });
     }
   }
 
@@ -4514,19 +4580,22 @@
     const base = session.baseline_plan;
     const ai = session.ai_plan;
     if (!ai && base) {
-      return `规则基线建议 ${dirLabel(base.direction)}。等待 AI 完成后可对照。`;
+      return t('规则基线建议 {dir}。等待 AI 完成后可对照。', { dir: dirLabel(base.direction) });
     }
-    if (!ai) return '等待 AI 输出…';
+    if (!ai) return t('等待 AI 输出…');
     if (!base) {
-      return `AI 建议 ${dirLabel(ai.direction)}。请结合上方指标自行确认。`;
+      return t('AI 建议 {dir}。请结合上方指标自行确认。', { dir: dirLabel(ai.direction) });
     }
     if (base.direction === ai.direction) {
       if (ai.direction === 'wait') {
-        return '规则与 AI 一致观望：当前性价比不足，不宜强行开仓。';
+        return t('规则与 AI 一致观望：当前性价比不足，不宜强行开仓。');
       }
-      return `规则与 AI 同向（${dirLabel(ai.direction)}），共识相对更高，但仍须自行控制仓位与止损。`;
+      return t('规则与 AI 同向（{dir}），共识相对更高，但仍须自行控制仓位与止损。', { dir: dirLabel(ai.direction) });
     }
-    return `规则建议 ${dirLabel(base.direction)}，AI 建议 ${dirLabel(ai.direction)} —— 方向分歧，优先缩小仓位或观望，勿盲信任一侧。`;
+    return t('规则建议 {a}，AI 建议 {b} —— 方向分歧，优先缩小仓位或观望，勿盲信任一侧。', {
+      a: dirLabel(base.direction),
+      b: dirLabel(ai.direction),
+    });
   }
 
   function formatRationaleHtml(text) {
@@ -4597,12 +4666,12 @@
     const swing = session.swing_levels || {};
     const jreg = session.market_regime || {};
 
-    const biasZh = { up: '偏多', down: '偏空', range: '震荡' }[swing.daily_bias] || (swing.daily_bias || '—');
-    const horizonZh = swing.horizon === 'swing' ? '波段' : (swing.horizon === 'short' ? '短线反抽' : (swing.horizon || '—'));
+    const biasZh = t({ up: '偏多', down: '偏空', range: '震荡' }[swing.daily_bias] || (swing.daily_bias || '—'));
+    const horizonZh = t(swing.horizon === 'swing' ? '波段' : (swing.horizon === 'short' ? '短线反抽' : (swing.horizon || '—')));
     const confBits = [];
     if (swing.confluence_382) confBits.push('0.382↔BOLL');
     if (swing.confluence_618) confBits.push('0.618↔BOLL');
-    const confStr = confBits.length ? confBits.join(' · ') : '无';
+    const confStr = confBits.length ? confBits.join(' · ') : t('无');
     const touchStr = (swing.touch_level != null && swing.touch_count > 0)
       ? `${fmtNum(swing.touch_level)} ×${swing.touch_count}`
       : '—';
@@ -4614,7 +4683,7 @@
       <h3>波段锁点</h3>
       <div class="ai-chips">
         <span class="ai-chip"><b>定调</b>${escapeHtml(biasZh)}</span>
-        <span class="ai-chip"><b>视野</b>${escapeHtml(horizonZh)}${swing.htf_ready === false ? ' · 未成熟' : ''}</span>
+        <span class="ai-chip"><b>视野</b>${escapeHtml(horizonZh)}${swing.htf_ready === false ? t(' · 未成熟') : ''}</span>
         <span class="ai-chip mono"><b>0.382</b>${fmtNum(swing.rebound_382)}</span>
         <span class="ai-chip mono"><b>0.618</b>${fmtNum(swing.rebound_618)}</span>
         <span class="ai-chip mono"><b>防守</b>${fmtNum(swing.defense_level)}</span>
@@ -4624,9 +4693,9 @@
         <div class="ai-kv"><span class="k">反抽 0.382</span><span class="v">${fmtNum(swing.rebound_382)}</span></div>
         <div class="ai-kv"><span class="k">目标 0.618</span><span class="v">${fmtNum(swing.rebound_618)}</span></div>
         <div class="ai-kv"><span class="k">回撤 0.382/0.618</span><span class="v">${fmtNum(swing.retr_382)} / ${fmtNum(swing.retr_618)}</span></div>
-        <div class="ai-kv"><span class="k">BOLL 中轨</span><span class="v">${swing.boll_mid != null ? fmtNum(swing.boll_mid) : '—'} · 共振 ${escapeHtml(confStr)}</span></div>
-        <div class="ai-kv"><span class="k">日线定调</span><span class="v">${escapeHtml(biasZh)} · 防守 ${fmtNum(swing.defense_level)}</span></div>
-        <div class="ai-kv"><span class="k">视野</span><span class="v">${escapeHtml(horizonZh)}${swing.htf_ready === false ? '（高周期未成熟）' : ''}</span></div>
+        <div class="ai-kv"><span class="k">BOLL 中轨</span><span class="v">${t('{a} · 共振 {b}', { a: swing.boll_mid != null ? fmtNum(swing.boll_mid) : '—', b: escapeHtml(confStr) })}</span></div>
+        <div class="ai-kv"><span class="k">日线定调</span><span class="v">${t('{a} · 防守 {b}', { a: escapeHtml(biasZh), b: fmtNum(swing.defense_level) })}</span></div>
+        <div class="ai-kv"><span class="k">视野</span><span class="v">${escapeHtml(horizonZh)}${swing.htf_ready === false ? t('（高周期未成熟）') : ''}</span></div>
         <div class="ai-kv"><span class="k">关键位触及</span><span class="v">${touchStr}</span></div>
         <div class="ai-kv"><span class="k">vs BTC</span><span class="v">${escapeHtml(swing.rs_note || '—')}</span></div>
       </div>
@@ -4637,7 +4706,7 @@
     const regimeSec = hasRegime ? `<div class="ai-sec">
       <h3>盘面分类</h3>
       <div class="ai-chips">
-        <span class="ai-chip"><b>${escapeHtml(jreg.regime_zh || jreg.regime)}</b></span>
+        <span class="ai-chip"><b>${escapeHtml(t(jreg.regime_zh || jreg.regime))}</b></span>
         <span class="ai-chip"><b>头仓</b>${escapeHtml(jreg.seed_style || '—')}</span>
         <span class="ai-chip"><b>补仓</b>${escapeHtml(jreg.add_mode || '—')}</span>
         <span class="ai-chip"><b>延续</b>${jreg.continuation_intact ? '完好' : '中断'}</span>
@@ -4659,7 +4728,7 @@
         <div class="ai-kv"><span class="k">日内 TP</span><span class="v">0.50 ${fmtNum(jreg.tp_intraday_50)} · 0.618 ${fmtNum(jreg.tp_intraday_618)}</span></div>
         <div class="ai-kv"><span class="k">12h EMA6</span><span class="v">${fmtNum(jreg.ema12h_6)}</span></div>
         <div class="ai-kv"><span class="k">昨高/低</span><span class="v">${fmtNum(jreg.prev_day_high)} / ${fmtNum(jreg.prev_day_low)}</span></div>
-        <div class="ai-kv"><span class="k">腰斩线</span><span class="v">${fmtNum(jreg.waist_line)}${jreg.below_waist ? ' · 已触及' : ''}</span></div>
+        <div class="ai-kv"><span class="k">腰斩线</span><span class="v">${fmtNum(jreg.waist_line)}${jreg.below_waist ? t(' · 已触及') : ''}</span></div>
         <div class="ai-kv"><span class="k">周BOLL中</span><span class="v">${fmtNum(jreg.weekly_boll_mid)}</span></div>
         <div class="ai-kv"><span class="k">3d/5d BOLL</span><span class="v">${fmtNum(jreg.boll_mid_3d)} / ${fmtNum(jreg.boll_mid_5d)}</span></div>
         <div class="ai-kv"><span class="k">5d EMA6</span><span class="v">${fmtNum(jreg.ema5d_6)}</span></div>
@@ -4668,7 +4737,7 @@
     </div>` : '';
 
     const quant = `<div class="ai-sec">
-      <h3>数据指标 · ${escapeHtml(session.timeframe || '')}</h3>
+      <h3>${t('数据指标 · {tf}', { tf: escapeHtml(session.timeframe || '') })}</h3>
       <div class="ai-kv"><span class="k">现价</span><span class="v">${fmtNum(session.current_price, 6)}</span></div>
       <div class="ai-kv"><span class="k">结构</span><span class="v">${st.trend || '—'}</span></div>
       <div class="ai-kv"><span class="k">支撑</span><span class="v">${(st.supports || []).slice(0, 3).map((x) => fmtNum(x)).join(' / ') || '—'}</span></div>
@@ -4689,7 +4758,7 @@
     if (session.ai_plan) {
       aiHtml = planBlock('AI 计划', session.ai_plan, { primary: true });
       if (session.ai_plan.model_id) {
-        aiHtml += `<div class="text-[10px] mt-1" style="color:var(--muted)">模型 ${escapeHtml(session.ai_plan.model_id)} · ${escapeHtml(session.ai_plan.prompt_version || '')}</div>`;
+        aiHtml += `<div class="text-[10px] mt-1" style="color:var(--muted)">${t('模型 {m}', { m: escapeHtml(session.ai_plan.model_id) })} · ${escapeHtml(session.ai_plan.prompt_version || '')}</div>`;
       }
     } else if (session.status === 'ai_failed') {
       aiHtml = `<div class="ai-sec ai-sec-primary"><h3>AI 计划</h3><div style="color:var(--red);font-size:12px">${escapeHtml(session.ai_error || '生成失败')}</div></div>`;
@@ -4734,7 +4803,7 @@
     if (!log) return;
     const box = document.createElement('div');
     box.className = `ai-chat-bubble ${role === 'user' ? 'user' : 'assistant'}`;
-    box.innerHTML = `<div class="who">${role === 'user' ? '我' : 'AI'}</div><div>${escapeHtml(text)}</div>`;
+    box.innerHTML = `<div class="who">${role === 'user' ? t('我') : 'AI'}</div><div>${escapeHtml(text)}</div>`;
     log.appendChild(box);
     log.closest('.ai-chat')?.classList.remove('empty');
     log.scrollTop = log.scrollHeight;
@@ -4783,6 +4852,7 @@
           session_id: lastAnalyzeSession.id,
           context: buildChatContext(),
           history: chatHistory.slice(0, -1).slice(-8),
+          lang: LANG,
         }),
       });
       if (!r.ok) {
@@ -4794,13 +4864,13 @@
         );
       }
       const data = await r.json();
-      const reply = data.reply || '（无回复）';
+      const reply = data.reply || t('（无回复）');
       appendChatBubble('assistant', reply, { persistLocal: true });
       if (Array.isArray(data.chat_log)) {
         lastAnalyzeSession = { ...lastAnalyzeSession, chat_log: data.chat_log };
       }
     } catch (e) {
-      appendChatBubble('assistant', `失败：${e.message || e}`, { persistLocal: false });
+      appendChatBubble('assistant', t('失败：{msg}', { msg: e.message || e }), { persistLocal: false });
       toast('追问失败', String(e.message || e), 'short');
     } finally {
       chatBusy = false;
@@ -4858,6 +4928,7 @@
           symbol: activeSymbol,
           timeframe: tf,
           market: 'futures',
+          lang: LANG,
         }),
       });
       if (!r.ok) {
@@ -4906,7 +4977,7 @@
 
   function scheduleReconnect(delayMs = 2000) {
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    setConn(`重连 ${Math.round(delayMs / 1000)}s`, false);
+    setConn(t('重连 {n}s', { n: Math.round(delayMs / 1000) }), false);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect({ silent: true });
@@ -4955,7 +5026,7 @@
     ws = new WebSocket(wsUrl(symbol, activeTf, watchList));
 
     ws.onopen = () => {
-      setConn(watchList.length ? `合约实时 · ${watchList.length + 1}对` : '合约实时', true);
+      setConn(watchList.length ? t('合约实时 · {n}对', { n: watchList.length + 1 }) : t('合约实时'), true);
       pingTimer = setInterval(() => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
       }, 25000);
@@ -4976,14 +5047,14 @@
         if (msg.level_context) ingestLevelContext(msg.level_context);
         if (msg.candles?.length) {
           const last = msg.candles[msg.candles.length - 1];
-          updateTicker(last.close, `K ${msg.candles.length}根`);
+          updateTicker(last.close, t('K {n}根', { n: msg.candles.length }));
         }
         if (msg.telegram_ready) {
           $('tgBadge').textContent = 'TG ✓';
           $('tgBadge').classList.add('ok');
         }
         if (!suppressToast) {
-          toast('合约行情已接入', `${msg.symbol} ${msg.timeframe} · U本位`, 'info');
+          toast('合约行情已接入', t('{sym} {tf} · U本位', { sym: msg.symbol, tf: msg.timeframe }), 'info');
         }
         suppressToast = false;
       } else if (msg.type === 'premium') {
@@ -5019,7 +5090,7 @@
         }
         switchDock('alerts');
         toast(
-          `${(msg.title || msg.rule || msg.direction || 'ALERT').toString()} · ${msg.symbol}`,
+          `${t((msg.title || msg.rule || msg.direction || 'ALERT').toString())} · ${msg.symbol}`,
           (msg.reasons || []).slice(0, 2).join('；') || '规则提醒',
           msg.direction,
         );
@@ -5078,7 +5149,7 @@
       if (!a.enabled || a.price == null) continue;
       if (!['cross', 'above', 'below'].includes(a.kind)) continue;
       if (normalizeSymbol(a.symbol) !== normalizeSymbol(activeSymbol)) continue;
-      const title = a.kind === 'below' ? '下穿' : a.kind === 'above' ? '上穿' : '达到';
+      const title = t(a.kind === 'below' ? '下穿' : a.kind === 'above' ? '上穿' : '达到');
       alertPriceLines.push(candleSeries.createPriceLine({
         price: Number(a.price),
         color: a.kind === 'below' ? '#f6465d' : '#f0b90b',
@@ -5102,7 +5173,7 @@
         <div class="flex items-start justify-between gap-2">
           <div>
             <div>${escapeHtml(a.label || a.symbol)}</div>
-            <div class="text-[10px]" style="color:var(--muted)">${a.enabled ? '盯着' : '已触发/关闭'} · ${a.repeat ? '重复' : '一次'} · 已响 ${a.fire_count || 0} 次</div>
+            <div class="text-[10px]" style="color:var(--muted)">${t(a.enabled ? '盯着' : '已触发/关闭')} · ${t(a.repeat ? '重复' : '一次')} · ${t('已响 {n} 次', { n: a.fire_count || 0 })}</div>
           </div>
           <div class="flex gap-1 shrink-0">
             <button type="button" class="chip" data-px-toggle="${a.id}">${a.enabled ? '暂停' : '重新盯'}</button>
@@ -5272,8 +5343,8 @@
     if ($('daemonBadge')) {
       if (alwaysOnEnabled) {
         const tfs = daemonTimeframes.join('/');
-        $('daemonBadge').textContent = `常驻 ·${tfs}`;
-        $('daemonBadge').title = `关网页也推 TG · 多级别 ${tfs}（图表周期不影响）`;
+        $('daemonBadge').textContent = t('常驻 ·{tfs}', { tfs });
+        $('daemonBadge').title = t('关网页也推 TG · 多级别 {tfs}（图表周期不影响）', { tfs });
         $('daemonBadge').classList.add('ok');
         syncDaemonWatchlist({ silent: true });
       } else {

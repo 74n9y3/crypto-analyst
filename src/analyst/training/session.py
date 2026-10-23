@@ -203,7 +203,7 @@ def _ctx_to_market_extras(ctx: SessionContext, latency_ms: int | None = None) ->
     return out
 
 
-def run_ai_job(session_id: int) -> None:
+def run_ai_job(session_id: int, lang: str = "zh") -> None:
     """后台任务：用已存快照调 LLM。由 FastAPI BackgroundTasks 调用。"""
     import logging
 
@@ -227,6 +227,7 @@ def run_ai_job(session_id: int) -> None:
         ai_response = analyze_market(
             market_snapshot=market_dict,
             indicators_snapshot=s.indicators_snapshot or {},
+            lang=lang,
         )
         repo.save_ai_plan(
             AIPlan(
